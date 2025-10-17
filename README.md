@@ -27,16 +27,17 @@ It is designed for integration into integrated modeling frameworks, enabling fas
 ## ⚙️ Installation
 
 Clone the repository:
-
+```bash
 git clone https://github.com/DIFFER-NL/hpi2nn.git
 cd hpi2nn
+```
+(Optional) Create a virtual environment and install dependencies.
 
-(Optional) Create a virtual environment and install dependencies:
-
+```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install onnxruntime
-
+```
 The onnxruntime version used for this project is 1.22.0
 
 ## Quick Inference Example
