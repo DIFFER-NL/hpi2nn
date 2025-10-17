@@ -42,7 +42,11 @@ The onnxruntime version used for this project is 1.22.0
 
 ## Quick Inference Example
 
-Shown on inference/simple_inference
+Shown on inference/simple_inference.py
+Advised to be run from hpi2nn/ folder
+```bash
+python -m inference/simple_inference.py
+```
 
 Inputs: Pellet radius in m, velocity in m/s, Te and Ti profiles in eV, ne profile in m-3, B0 in T, first point (R1,Z1) and second point (R2,Z2) in m
 x coord preferred in rho_tor_norm, but using a_norm will not impact too much the result 
