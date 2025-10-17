@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+#Omit This file
+HPI2-NN_simple.py
+# Virtual environments
+.venv/
+venv/
+env/
+
+# # Data and models
+# models/
+# *.pt
+# *.onnx
+# *.h5
+
+# Jupyter notebooks checkpoints
+.ipynb_checkpoints/
+notebooks/
+# Logs and results
+results/
+logs/
+
+# System and IDE files
+.DS_Store
+.vscode/
+.idea/
