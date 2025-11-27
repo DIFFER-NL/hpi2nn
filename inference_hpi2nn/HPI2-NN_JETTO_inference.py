@@ -30,7 +30,11 @@ if Data_0D[3]==28:
     first_point=Data_0D[17:19]*1e-2
     second_point=Data_0D[19:21]*1e-2
     dne, dTe = evaluate_model(pellet_radius, vel_value, x_coord_dat, Te_in_dat, ne_in_dat, Ti_in_dat, q_in_dat, B0, first_point, second_point)
-    
+elif Data_0D[3]==33:
+    inj_value_string = 'ITER_upperHFS'
+    dne, dTe = evaluate_model(pellet_radius, vel_value, x_coord_dat, Te_in_dat, ne_in_dat, Ti_in_dat, q_in_dat, B0, inj_value=inj_value_string)
+else:
+    raise ValueError('Injection line not selected, HPI2-NN did not run')
 print('Change in density (m-3)\n',dne,'Change in temperature (eV)\n', dTe)
 np.savetxt('JETTO_DEPout.dat',dne/1e6)
 np.savetxt('JETTO_Tout.dat',[4.5228395e-04])#Ablation time
