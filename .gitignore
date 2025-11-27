@@ -19,7 +19,7 @@ env/
 .ipynb_checkpoints/
 notebooks/
 # Logs and results
-results/
+# results/dne.txt
 logs/
 
 # System and IDE files

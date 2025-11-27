@@ -14,8 +14,8 @@ THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parent.parent
 
 # Path to the model weights
-WEIGHTS_PATH = REPO_ROOT / "artifacts" / "models" 
-SCALERS_PATH = REPO_ROOT / "artifacts" / "scalers"
+WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models" 
+SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
 
 injection_lines = {
 	    "WEST_upperHFS": {"points": [(1.8, 0.47), (2.6192, -0.136)], "inj_value": 'WEST_upHFS'},
@@ -113,7 +113,8 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
         norm = np.load(SCALERS_PATH / "WEST" / "Normalization.npz")
         components_ne = data_ne["components"]
-        
+        if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
+            raise ValueError('B0 is too far from the training range of WEST (-3.74 T, -3.77 T)')
         #Sign switch for WEST last 2 components due to issue when generating PCA
         components_ne[1,:]=-components_ne[1,:]
         components_ne[2,:]=-components_ne[2,:]
@@ -202,7 +203,16 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     dne=1e19*two_gaussians(x_coord,*ne_param)
     # dTe=-1e2*two_gaussians(x_coord,*Te_param)
 
+    #Make sure that dne is positive
+    if np.count_nonzero(dne<0)>0:
+        print(f'Warning: HPI2-NN has predicted negative dne, in {np.count_nonzero(dne < 0)} positions out of {x_coord.shape[0]}, it has been corrected to 0.')
+        if np.count_nonzero(dne < 0)/x_coord.shape[0] >0.50:
+            raise ValueError(f'Bad HPI2-NN prediction, {np.count_nonzero(dne < 0)/x_coord.shape[0]*100}% of positions were predicted negative, review input ranges.')
+    dne=np.where(dne<0,0,dne)
+    
     #Adiabatic constraint to calculate Te
     Te_2=ne*Te/(ne+dne)
     dTe=Te_2-Te
+    
+
     return dne, dTe

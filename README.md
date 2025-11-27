@@ -8,8 +8,8 @@ Author: Alex Panera Alvarez
 
 **HPI2-NN** is a machine learning surrogate model of the **HPI2 pellet ablation and deposition code** (https://gitlab.com/hpi2_group/HPI2_code), developed to accelerate integrated modeling of pellet-fuelled tokamak discharges.
 
-The model learns from around 4000 **HPI2 simulations** on WEST experimental data and ITER simulation data, and predicts **pellet deposition profiles** based on plasma parameters and pellet injection conditions.  
-It is designed for integration into integrated modeling frameworks, enabling fast inference within integrated plasma scenario modeling.
+The model learns from around 10000 **HPI2 simulations** on WEST experimental data and ITER simulation data, and predicts **pellet deposition profiles** based on plasma parameters and pellet injection conditions.  
+It is designed for stand-alone and coupling into integrated modeling frameworks, enabling fast inference within integrated plasma scenario modeling.
 
 ---
 
@@ -45,16 +45,16 @@ The onnxruntime version used for this project is 1.22.0
 Shown on inference/simple_inference.py
 Advised to be run from hpi2nn/ folder
 ```bash
-python -m inference/simple_inference.py
+python inference_hpi2nn/simple_inference.py
 ```
 
 Inputs: Pellet radius in m, velocity in m/s, Te and Ti profiles in eV, ne profile in m-3, B0 in T, first point (R1,Z1) and second point (R2,Z2) in m
 x coord preferred in rho_tor_norm, but using a_norm will not impact too much the result 
 B0 is suppose to be negative always (inforced anyway in inference)
 
-Outputs: deposition profile dne (m-3) and temperatura change profile dTe (eV) same x coord as given in input
+Outputs: deposition profile dne (m-3) and temperature change profile dTe (eV) same x coord as given in input
 
-For JETTO implementation--> inference/HPI2-NN_JETTO.py
+For JETTO implementation--> inference_hpi2nn/HPI2-NN_JETTO.py
 FOR JETTO multiply ne by 1e6
 
 
