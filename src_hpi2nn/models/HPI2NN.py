@@ -95,17 +95,19 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     print('Machine and angle detected as: ',inj_value)
     #LOADING THE WEIGHTS DEPENDING ON THE INJECTION AND MACHINE
     if inj_value=='WEST_upHFS':
-        session = ort.InferenceSession(WEIGHTS_PATH / "WEST_upHFS.onnx")
+        onnx_path = (WEIGHTS_PATH / "WEST_upHFS.onnx").resolve()
     elif inj_value=='WEST_midHFS':
-        session = ort.InferenceSession(WEIGHTS_PATH / "WEST_midHFS.onnx")
+        onnx_path = (WEIGHTS_PATH / "WEST_midHFS.onnx").resolve()
     elif inj_value=='WEST_lowHFS':
-        session = ort.InferenceSession(WEIGHTS_PATH / "WEST_lowHFS.onnx")
+        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS.onnx").resolve()
     elif inj_value=='WEST_LFS':
-        session = ort.InferenceSession(WEIGHTS_PATH / "WEST_LFS.onnx")
+        onnx_path = (WEIGHTS_PATH / "WEST_LFS.onnx").resolve()
     elif inj_value=='ITER_upperHFS':
-        session = ort.InferenceSession(WEIGHTS_PATH / "ITER_upHFS.onnx")
+        onnx_path = (WEIGHTS_PATH / "ITER_upHFS.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
+ 
+    session = ort.InferenceSession(str(onnx_path))
 
     #Reading PCA profile dimensionality reduction parameters and normalization parameters
     if inj_value in ('WEST_upHFS', "WEST_midHFS.onnx","WEST_lowHFS.onnx","WEST_LFS.onnx"):
