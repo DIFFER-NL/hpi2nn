@@ -110,7 +110,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     session = ort.InferenceSession(str(onnx_path))
 
     #Reading PCA profile dimensionality reduction parameters and normalization parameters
-    if inj_value in ('WEST_upHFS', "WEST_midHFS.onnx","WEST_lowHFS.onnx","WEST_LFS.onnx"):
+    if inj_value in ('WEST_upHFS', "WEST_midHFS","WEST_lowHFS","WEST_LFS"):
         data_Te = np.load(SCALERS_PATH / "WEST" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
         norm = np.load(SCALERS_PATH / "WEST" / "Normalization.npz")
