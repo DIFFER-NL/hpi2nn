@@ -118,8 +118,8 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
             raise ValueError('B0 is too far from the training range of WEST (-3.74 T, -3.77 T)')
         #Sign switch for WEST last 2 components due to issue when generating PCA
-        components_ne[1,:]=-components_ne[1,:]
-        components_ne[2,:]=-components_ne[2,:]
+        # components_ne[1,:]=-components_ne[1,:]
+        # components_ne[2,:]=-components_ne[2,:]
     elif inj_value=="ITER_upperHFS":
         data_Te = np.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
@@ -133,13 +133,10 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     scaler_mean_ne = data_ne["scaler_mean"]
     scaler_std_ne = data_ne["scaler_std"]
     pca_mean_ne = data_ne["pca_mean"]
-    if inj_value in ('WEST_upHFS', "WEST_midHFS.onnx","WEST_lowHFS.onnx","WEST_LFS.onnx"):
-        #again, for WEST was done different
-        Te_scaled=Te_interp
-        ne_scaled=ne_interp
-    elif inj_value=="ITER_upperHFS":
-        Te_scaled = (Te_interp - scaler_mean_Te) / scaler_std_Te
-        ne_scaled = (ne_interp - scaler_mean_ne) / scaler_std_ne
+    
+    #Normalization of Te and ne
+    Te_scaled = (Te_interp - scaler_mean_Te) / scaler_std_Te
+    ne_scaled = (ne_interp - scaler_mean_ne) / scaler_std_ne
 
     
     # Subtract PCA mean and apply projection to obtain 3 points per profile
@@ -148,7 +145,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     
     ne_centered = ne_scaled - pca_mean_ne
     ne_in_points = components_ne @ ne_centered  # shape (3,)
-    
+    # print(Te_in_points, ne_in_points)
     def expo(x,a,b):
         return a*np.exp(b*x)
 
@@ -200,6 +197,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     y_norm=np.asarray(y_norm).reshape(1,-1)
     
     y=(scaler_y_std * y_norm + scaler_y_mean).reshape(-1)#Unnormalize
+    # print('NN out: ',y)
     ne_param=y[:6]
     # Te_param=y[6:]
     dne=1e19*two_gaussians(x_coord,*ne_param)

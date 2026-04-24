@@ -32,6 +32,7 @@ vel_value=200 #in m/s
 
 first_point=[1.8, 0.47] #[R,Z] in m
 second_point= [2.6192, -0.136] #[R,Z] in m
+print(Te_in_dat,ne_in_dat, Ti_in_dat)
 dne, dTe = evaluate_model(pellet_radius, vel_value, x_coord_dat, Te_in_dat, ne_in_dat, Ti_in_dat, q_in_dat, B0, first_point, second_point)
     
 print('Change in density (m-3)\n',dne,'Change in temperature (eV)\n', dTe)
