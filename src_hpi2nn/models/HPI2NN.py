@@ -96,13 +96,13 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     print('Machine and angle detected as: ',inj_value)
     #LOADING THE WEIGHTS DEPENDING ON THE INJECTION AND MACHINE
     if inj_value=='WEST_upHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_upHFS_noBo.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_upHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_midHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_midHFS_noBo.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_midHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_lowHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_LFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
     elif inj_value=='ITER_upperHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS.onnx").resolve()
     else:
@@ -114,7 +114,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     if inj_value in ('WEST_upHFS', "WEST_midHFS","WEST_lowHFS","WEST_LFS"):
         data_Te = np.load(SCALERS_PATH / "WEST" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
-        norm = np.load(SCALERS_PATH / "WEST" / "Normalization.npz")
+        norm = np.load(SCALERS_PATH / "WEST" / "Normalization_v4.npz")
         components_ne = data_ne["components"]
         if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
             warnings.warn(f'B0={B0:.3f} T is outside the WEST training range (-3.74 T, -3.77 T).')
