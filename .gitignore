@@ -26,3 +26,6 @@ logs/
 .DS_Store
 .vscode/
 .idea/
+
+# Claude Code
+CLAUDE.md

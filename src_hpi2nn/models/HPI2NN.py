@@ -7,6 +7,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import onnxruntime as ort
 from pathlib import Path
+import warnings
 
 THIS_DIR = Path(__file__).resolve().parent
 
@@ -83,7 +84,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     # Pellet radius in m, velocity in m/s, Te and Ti in eV, ne in m-3, B0 in T, first point (R1,Z1) and second point (R2,Z2) in m
     #x coord preferred in rho_tor_norm, but using a_norm will not impact too much the result 
     #B0 is suppose to be negative always (inforced anyway)
-    #FOR JETTO multiply density by 1e6
+    #FOR JETTO multiply density by 1e6 before getting it into this function
     
     B0=-np.abs(B0)
     # Interpolate and scale new profile
@@ -95,13 +96,13 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     print('Machine and angle detected as: ',inj_value)
     #LOADING THE WEIGHTS DEPENDING ON THE INJECTION AND MACHINE
     if inj_value=='WEST_upHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_upHFS.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_upHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_midHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_midHFS.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_midHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_lowHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_LFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_LFS.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
     elif inj_value=='ITER_upperHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS.onnx").resolve()
     else:
@@ -113,13 +114,11 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     if inj_value in ('WEST_upHFS', "WEST_midHFS","WEST_lowHFS","WEST_LFS"):
         data_Te = np.load(SCALERS_PATH / "WEST" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
-        norm = np.load(SCALERS_PATH / "WEST" / "Normalization.npz")
+        norm = np.load(SCALERS_PATH / "WEST" / "Normalization_v4.npz")
         components_ne = data_ne["components"]
         if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
-            raise ValueError('B0 is too far from the training range of WEST (-3.74 T, -3.77 T)')
-        #Sign switch for WEST last 2 components due to issue when generating PCA
-        components_ne[1,:]=-components_ne[1,:]
-        components_ne[2,:]=-components_ne[2,:]
+            warnings.warn(f'B0={B0:.3f} T is outside the WEST training range (-3.74 T, -3.77 T).')
+            
     elif inj_value=="ITER_upperHFS":
         data_Te = np.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
@@ -133,13 +132,10 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     scaler_mean_ne = data_ne["scaler_mean"]
     scaler_std_ne = data_ne["scaler_std"]
     pca_mean_ne = data_ne["pca_mean"]
-    if inj_value in ('WEST_upHFS', "WEST_midHFS.onnx","WEST_lowHFS.onnx","WEST_LFS.onnx"):
-        #again, for WEST was done different
-        Te_scaled=Te_interp
-        ne_scaled=ne_interp
-    elif inj_value=="ITER_upperHFS":
-        Te_scaled = (Te_interp - scaler_mean_Te) / scaler_std_Te
-        ne_scaled = (ne_interp - scaler_mean_ne) / scaler_std_ne
+    
+    #Normalization of Te and ne
+    Te_scaled = (Te_interp - scaler_mean_Te) / scaler_std_Te
+    ne_scaled = (ne_interp - scaler_mean_ne) / scaler_std_ne
 
     
     # Subtract PCA mean and apply projection to obtain 3 points per profile
@@ -148,7 +144,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     
     ne_centered = ne_scaled - pca_mean_ne
     ne_in_points = components_ne @ ne_centered  # shape (3,)
-    
+    # print(Te_in_points, ne_in_points)
     def expo(x,a,b):
         return a*np.exp(b*x)
 
@@ -172,13 +168,21 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     #Exponential fit for Ti/Te
     params_Ti_Te, covariance = curve_fit(expo, x_coord, Ti/Te, p0=[1,1])
 
-
-    parameters=np.concatenate((ne_in_points,Te_in_points,params_Ti_Te,q_rat,np.array([B0]),params_inj))
+    if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'): #no B0 for WEST
+        parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, params_inj))
+    else:
+        parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, np.array([B0]), params_inj))
+    # parameters=np.concatenate((ne_in_points,Te_in_points,params_Ti_Te,q_rat,np.array([B0]),params_inj))
     X=parameters
     print('NN parameters: ', parameters)
     
     scaler_X_mean=norm['scaler_X_mean']
     scaler_X_std= norm['scaler_X_std']
+    if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'):
+        B0_IDX = len(scaler_X_mean) - 3   # B0 sits 3rd from the end
+        #Important: if order changes this is not true
+        scaler_X_mean = np.delete(scaler_X_mean, B0_IDX)
+        scaler_X_std  = np.delete(scaler_X_std,  B0_IDX)
     scaler_y_mean= norm['scaler_y_mean']
     scaler_y_std=norm['scaler_y_std']
 
@@ -200,6 +204,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     y_norm=np.asarray(y_norm).reshape(1,-1)
     
     y=(scaler_y_std * y_norm + scaler_y_mean).reshape(-1)#Unnormalize
+    # print('NN out: ',y)
     ne_param=y[:6]
     # Te_param=y[6:]
     dne=1e19*two_gaussians(x_coord,*ne_param)
