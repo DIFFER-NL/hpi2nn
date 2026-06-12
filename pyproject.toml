@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hpi2nn"
+version = "0.1.0"
+description = "HPI2-NN pellet ablation neural network surrogate (DIFFER)"
+requires-python = ">=3.10"
+# Only version-pin the libraries that can break compatibility; the rest
+# follows the latest available version.
+dependencies = [
+    "numpy",
+    "jax",
+    "onnx",
+    # Tightly coupled to the jax version; 0.3.0 is the tested version.
+    "jaxonnxruntime~=0.3.0",
+    # Used by the reference (non-JAX) model HPI2NN.py.
+    # Upstream README: "The onnxruntime version used for this project is 1.22.0".
+    "onnxruntime~=1.22.0",
+    "scipy",  # HPI2NN.py (curve_fit)
+]
+
+[tool.setuptools]
+# Map the repo root to the `hpi2nn` package so existing imports keep working:
+#   from hpi2nn.src_hpi2nn.models.JAX_HPI2NN import evaluate_model
+# Editable install keeps files in place, so REPO_ROOT-relative artifact
+# loading (artifacts_hpi2nn/) keeps working too.
+packages = ["hpi2nn", "hpi2nn.src_hpi2nn", "hpi2nn.src_hpi2nn.models"]
+
+[tool.setuptools.package-dir]
+hpi2nn = "."

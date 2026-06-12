@@ -40,6 +40,20 @@ pip install onnxruntime
 ```
 The onnxruntime version used for this project is 1.22.0
 
+### Install as a package
+
+Install in editable mode to make the models importable from anywhere
+(dependencies — numpy, jax, onnx, onnxruntime, jaxonnxruntime, scipy — are
+installed automatically, see `pyproject.toml`):
+
+```bash
+pip install -e .
+```
+
+Note: only the **editable** install (`-e`) is supported. A regular install
+would not ship the ONNX models and scalers in `artifacts_hpi2nn/`, which are
+loaded with repository-relative paths.
+
 ## Quick Inference Example
 
 Shown on inference/simple_inference.py
