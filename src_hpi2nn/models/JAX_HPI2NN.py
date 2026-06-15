@@ -28,7 +28,8 @@ injection_lines = {
 	    "WEST_HFS": {"points": [(1.8, 0), (3.38, 0)], "inj_value": 'WEST_midHFS'},
 	    "WEST_X point": {"points": [(1.8, -0.33), (2.7336, -0.6884)], "inj_value": 'WEST_lowHFS'},
 	    "WEST_LFS": {"points": [(3.38, 0.08), (1.8, 0.08)], "inj_value": 'WEST_LFS'},
-        "ITER_upperHFS": {"points": [(3.96, 1.64), (4.65, 0.89)], "inj_value": 'ITER_upHFS'}
+        "ITER_upperHFS": {"points": [(3.96, 1.64), (4.65, 0.89)], "inj_value": 'ITER_upHFS'},
+        "AUG_upperHFS": {"points": [(1.255, 0.915), (1.5954, -0.0253)], "inj_value": 'AUG_upHFS'}
 	}
 
 
@@ -163,7 +164,9 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='WEST_LFS':
         onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
     elif inj_value=='ITER_upperHFS':
-        onnx_path = (WEIGHTS_PATH / "ITER_upHFS.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
+    elif inj_value=='AUG_upHFS':
+        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v4.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
@@ -195,9 +198,15 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=="ITER_upperHFS":
         data_Te = jnp.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
         data_ne = jnp.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
-        norm = jnp.load(SCALERS_PATH / "ITER" / "Normalization.npz")
+        norm = jnp.load(SCALERS_PATH / "ITER" / "Normalization_v4.npz")
         components_ne = data_ne["components"]
-        
+
+    elif inj_value=="AUG_upHFS":
+        data_Te = np.load(SCALERS_PATH / "AUG" / "pca_Te_data.npz")
+        data_ne = np.load(SCALERS_PATH / "AUG" / "pca_ne_data.npz")
+        norm = np.load(SCALERS_PATH / "AUG" / "Normalization_AUG_A2_v3.npz")
+        components_ne = data_ne["components"]
+
     components_Te = data_Te["components"]
     scaler_mean_Te = data_Te["scaler_mean"]
     scaler_std_Te = data_Te["scaler_std"]
@@ -268,6 +277,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
 
     y=(scaler_y_std * y_norm + scaler_y_mean).reshape(-1)#Unnormalize
     ne_param=y[:6]
+    t_abl=y[6]
     # Te_param=y[6:]
     dne=1e19*two_gaussians(x_coord,*ne_param)
     # dTe=-1e2*two_gaussians(x_coord,*Te_param)
@@ -305,4 +315,4 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     dTe=Te_2-Te
     
 
-    return dne, dTe
+    return dne, dTe, t_abl
