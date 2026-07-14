@@ -163,7 +163,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_LFS':
         onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
-    elif inj_value=='ITER_upperHFS':
+    elif inj_value=='ITER_upHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
     elif inj_value=='AUG_upHFS':
         onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v4.onnx").resolve()
@@ -195,7 +195,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         # #Sign switch for WEST last 2 components due to issue when generating PCA
         # components_ne[1,:]=-components_ne[1,:]
         # components_ne[2,:]=-components_ne[2,:]
-    elif inj_value=="ITER_upperHFS":
+    elif inj_value=="ITER_upHFS":
         data_Te = jnp.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
         data_ne = jnp.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
         norm = jnp.load(SCALERS_PATH / "ITER" / "Normalization_v4.npz")

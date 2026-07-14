@@ -15,6 +15,8 @@ dependencies = [
     "onnx",
     # Tightly coupled to the jax version; 0.3.0 is the tested version.
     "jaxonnxruntime~=0.3.0",
+    # Required by the jaxonnxruntime backend but not pulled in automatically.
+    "absl-py",
     # Used by the reference (non-JAX) model HPI2NN.py.
     # Upstream README: "The onnxruntime version used for this project is 1.22.0".
     "onnxruntime~=1.22.0",
