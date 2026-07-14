@@ -22,12 +22,7 @@ SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
 
 @lru_cache(maxsize=8)
 def _get_session(onnx_path):
-    """Cache the ONNX InferenceSession per model file.
-
-    Building the session (graph load + optimization) costs ~9 ms; the actual
-    forward pass is ~0.02 ms. Constructing it once instead of on every
-    evaluate_model call is the dominant inference-time win.
-    """
+    """Cache the ONNX InferenceSession per model file."""
     so = ort.SessionOptions()
     so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     so.intra_op_num_threads = 1  # tiny MLP: the thread pool is pure overhead
