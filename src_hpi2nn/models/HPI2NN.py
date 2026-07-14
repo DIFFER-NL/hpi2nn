@@ -7,6 +7,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 import onnxruntime as ort
 from pathlib import Path
+from functools import lru_cache
 import warnings
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -15,8 +16,29 @@ THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parent.parent
 
 # Path to the model weights
-WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models" 
+WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models"
 SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
+
+
+@lru_cache(maxsize=8)
+def _get_session(onnx_path):
+    """Cache the ONNX InferenceSession per model file.
+
+    Building the session (graph load + optimization) costs ~9 ms; the actual
+    forward pass is ~0.02 ms. Constructing it once instead of on every
+    evaluate_model call is the dominant inference-time win.
+    """
+    so = ort.SessionOptions()
+    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    so.intra_op_num_threads = 1  # tiny MLP: the thread pool is pure overhead
+    return ort.InferenceSession(onnx_path, so)
+
+
+@lru_cache(maxsize=16)
+def _load_npz(path):
+    """Cache the scaler/PCA .npz contents as a plain dict of arrays."""
+    with np.load(path) as f:
+        return {k: f[k] for k in f.files}
 
 injection_lines = {
 	    "WEST_upperHFS": {"points": [(1.8, 0.47), (2.6192, -0.136)], "inj_value": 'WEST_upHFS'},
@@ -111,26 +133,26 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
-    session = ort.InferenceSession(str(onnx_path))
+    session = _get_session(str(onnx_path))
 
     #Reading PCA profile dimensionality reduction parameters and normalization parameters
     if inj_value in ('WEST_upHFS', "WEST_midHFS","WEST_lowHFS","WEST_LFS"):
-        data_Te = np.load(SCALERS_PATH / "WEST" / "pca_Te_data.npz")
-        data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
-        norm = np.load(SCALERS_PATH / "WEST" / "Normalization_v4.npz")
+        data_Te = _load_npz(str(SCALERS_PATH / "WEST" / "pca_Te_data.npz"))
+        data_ne = _load_npz(str(SCALERS_PATH  / "WEST" / "pca_ne_data.npz"))
+        norm = _load_npz(str(SCALERS_PATH / "WEST" / "Normalization_v4.npz"))
         components_ne = data_ne["components"]
         if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
             warnings.warn(f'B0={B0:.3f} T is outside the WEST training range (-3.74 T, -3.77 T).')
-            
+
     elif inj_value=="ITER_upHFS":
-        data_Te = np.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
-        data_ne = np.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
-        norm = np.load(SCALERS_PATH / "ITER" / "Normalization_v4.npz")
+        data_Te = _load_npz(str(SCALERS_PATH / "ITER" / "pca_Te_data.npz"))
+        data_ne = _load_npz(str(SCALERS_PATH / "ITER" / "pca_ne_data.npz"))
+        norm = _load_npz(str(SCALERS_PATH / "ITER" / "Normalization_v4.npz"))
         components_ne = data_ne["components"]
     elif inj_value=="AUG_upHFS":
-        data_Te = np.load(SCALERS_PATH / "AUG" / "pca_Te_data.npz")
-        data_ne = np.load(SCALERS_PATH / "AUG" / "pca_ne_data.npz")
-        norm = np.load(SCALERS_PATH / "AUG" / "Normalization_AUG_A2_v3.npz")
+        data_Te = _load_npz(str(SCALERS_PATH / "AUG" / "pca_Te_data.npz"))
+        data_ne = _load_npz(str(SCALERS_PATH / "AUG" / "pca_ne_data.npz"))
+        norm = _load_npz(str(SCALERS_PATH / "AUG" / "Normalization_AUG_A2_v3.npz"))
         components_ne = data_ne["components"]
     
     components_Te = data_Te["components"]
