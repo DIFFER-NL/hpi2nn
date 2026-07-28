@@ -23,12 +23,22 @@ dependencies = [
     "scipy",  # HPI2NN.py (curve_fit)
 ]
 
+[project.optional-dependencies]
+# The TORAX interface (src_hpi2nn/interfaces/torax_interface.py) requires TORAX.
+# It is optional so that using HPI2-NN standalone does not force a TORAX install.
+torax = ["torax"]
+
 [tool.setuptools]
 # Map the repo root to the `hpi2nn` package so existing imports keep working:
 #   from hpi2nn.src_hpi2nn.models.JAX_HPI2NN import evaluate_model
 # Editable install keeps files in place, so REPO_ROOT-relative artifact
 # loading (artifacts_hpi2nn/) keeps working too.
-packages = ["hpi2nn", "hpi2nn.src_hpi2nn", "hpi2nn.src_hpi2nn.models"]
+packages = [
+    "hpi2nn",
+    "hpi2nn.src_hpi2nn",
+    "hpi2nn.src_hpi2nn.models",
+    "hpi2nn.src_hpi2nn.interfaces",
+]
 
 [tool.setuptools.package-dir]
 hpi2nn = "."
