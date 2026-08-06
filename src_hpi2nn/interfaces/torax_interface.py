@@ -98,38 +98,32 @@ def is_active_for_trigger_times(
   return active, jnp.asarray(index, dtype=jnp.int32)
 
 # If frequency is used, check whether the current time is at a periodic pellet
-# instant (phase measured from t_start).
+# instant (phase measured from t_start). The frequency is assumed strictly
+# positive (validated by the config) and injection_enabled toggles the injector.
 def is_active_for_frequency(
     t: jax.Array,
     frequency: array_typing.FloatScalar,
     frequency_t_start: array_typing.FloatScalar,
+    injection_enabled: array_typing.FloatScalar,
     tol: array_typing.FloatScalar,
 ) -> tuple[jax.Array, jax.Array]:
   """Returns (at_trigger, index=-1) for a periodic pellet.
 
-  The phase is measured from frequency_t_start and no pellet fires at or before
-  it.
+  The phase is measured from frequency_t_start, injection_enabled toggles the
+  injector on or off. This must match the pellet-aware time step calculator.
   """
   frequency = jnp.asarray(frequency, dtype=t.dtype)
-  positive_frequency = frequency > 0.0
-  safe_frequency = jnp.where(
-      positive_frequency, frequency, jnp.asarray(1.0, dtype=t.dtype)
-  )
-  period = 1.0 / safe_frequency
+  injection_enabled = jnp.asarray(injection_enabled, dtype=bool)
+  period = 1.0 / frequency
   tol = jnp.asarray(tol, dtype=t.dtype)
   t_start = jnp.asarray(frequency_t_start, dtype=t.dtype)
-  # Phase is measured from t_start, no pellet fires at or before t_start.
-  after_start = t > t_start + tol
-  phase = jnp.mod(t - t_start + tol, period)
+  phase = jnp.mod(t - t_start, period)
   # Float rounding can leave phase just below period instead of wrapping to 0
   # at a pellet time
   phase = jnp.where(
       period - phase < tol, jnp.asarray(0.0, dtype=t.dtype), phase
   )
-  at_trigger = jnp.logical_and(
-      jnp.logical_and(positive_frequency, after_start),
-      phase <= tol,
-  )
+  at_trigger = jnp.logical_and(injection_enabled, phase <= tol)
   return at_trigger, jnp.asarray(-1, dtype=jnp.int32)
 
 # Call the right function to check if the pellet source should be active.
@@ -147,6 +141,7 @@ def is_pellet_active(source_params: 'RuntimeParams') -> tuple[jax.Array, jax.Arr
         t=t,
         frequency=source_params.frequency,
         frequency_t_start=source_params.frequency_t_start,
+        injection_enabled=source_params.injection_enabled,
         tol=source_params.trigger_tolerance,
     )
   return jnp.asarray(False), jnp.asarray(-1, dtype=jnp.int32)
@@ -235,9 +230,11 @@ class RuntimeParams(torax_sources.RuntimeParams):
   pellet_velocities: tuple[float, ...] | None
   frequency: array_typing.FloatScalar | None
   frequency_t_start: array_typing.FloatScalar
+  # Whether the periodic injector is on (frequency mode). STEP-interpolated 0/1.
+  injection_enabled: array_typing.FloatScalar
   ablation_time: array_typing.FloatScalar
   current_time: array_typing.FloatScalar
-  # Must match the pellet-aware time step calculator's trigger_tolerance.
+  # Also read by the pellet-aware time step calculator to align steps.
   trigger_tolerance: array_typing.FloatScalar
   # When True, the ablation window is the HPI2-NN-predicted t_abl instead of the
   # config ablation_time.
@@ -288,20 +285,26 @@ class HPI2NNPelletConfig(torax_sources.SourceModelBase):
       trigger time [m/s]. Must have the same length as trigger_times. If None,
       pellet_velocity is used for all triggers.
     frequency: A frequency for firing the pellet [Hz].
-      If 0 or None, the pellet is not triggered by frequency.
-      If specified, the pellet is fired at regular intervals defined by the
-      frequency.
+      If None, frequency mode is off. If set it must be strictly positive; the
+      pellet is fired at regular intervals, and injection_enabled turns the
+      injector on or off.
     frequency_t_start: Reference time for frequency mode [s]. The phase is
-      measured from this time and no pellet fires at or before it. Set it to
-      t_initial to avoid a spurious first shot.
+      measured from this time, so the first pellet fires at frequency_t_start.
+      Use injection_enabled to control when the injector is on.
+    injection_enabled: STEP-interpolated boolean toggling the periodic injector
+      on or off (frequency mode only). Defaults to on. A pellet fires at (never
+      exactly on, due to floating-point) each period boundary, so an
+      injection_enabled that switches on exactly at a pellet's time may miss it:
+      turn it on a small margin before the intended pellet time, e.g.
+      {0.0: False, T - margin: True} rather than {0.0: False, T: True}.
     use_model_ablation_time: When True (default), let HPI2-NN predict the ablation
       time t_abl for the deposit normalization and the time-step window.
     ablation_time: Let the user fix the ablation time [s] for all the pellets.
       This is used only when use_model_ablation_time is False.
       Shouldn't be used in most cases.
     trigger_tolerance: Time tolerance [s] used to decide whether the current time
-      coincides with a pellet trigger. It must match the `trigger_tolerance` of
-      the TORAX pellet-aware time step calculator (same default, 1e-8).
+      coincides with a pellet trigger. It is also read by the TORAX pellet-aware
+      time step calculator to align steps with the deposit (default 1e-8).
   """
 
   model_name: Annotated[Literal['hpi2_nn'], torax_pydantic.JAX_STATIC] = (
@@ -332,12 +335,18 @@ class HPI2NNPelletConfig(torax_sources.SourceModelBase):
   # If None, pellet_radius and pellet_velocity are used for all triggers.
   pellet_radii: list[float] | None = None
   pellet_velocities: list[float] | None = None
-  # OR a frequency, where 0 is "never" and value can be time-dependent.
+  # OR a strictly positive frequency (time-dependent allowed). Use
+  # injection_enabled to turn the injector on/off.
   frequency: torax_pydantic.TimeVaryingScalar | None = None
   # Reference time for frequency mode: phase is measured from this time and no
   # pellet fires at or before it.
   frequency_t_start: torax_pydantic.TimeVaryingScalar = (
       torax_pydantic.ValidatedDefault(0.0)  # [s]
+  )
+  # STEP-interpolated boolean toggling the periodic injector on/off during the
+  # run (frequency mode only). Defaults to on.
+  injection_enabled: torax_pydantic.TimeVaryingScalarStep = (
+      torax_pydantic.ValidatedDefault(True)
   )
   ablation_time: torax_pydantic.TimeVaryingScalar = (
       torax_pydantic.ValidatedDefault(1e-3)  # [s]
@@ -362,8 +371,8 @@ class HPI2NNPelletConfig(torax_sources.SourceModelBase):
           'Pellet source configuration must set either trigger_times or '
           'frequency, but not both.'
       )
-    if self.frequency is not None and self.frequency.get_value(0.0) < 0.0:
-      raise ValueError('frequency must be non-negative.')
+    if self.frequency is not None and self.frequency.get_value(0.0) <= 0.0:
+      raise ValueError('frequency must be strictly positive.')
     if self.frequency is not None and (
         self.pellet_radii is not None or self.pellet_velocities is not None
     ):
@@ -422,6 +431,7 @@ class HPI2NNPelletConfig(torax_sources.SourceModelBase):
             self.frequency.get_value(t) if self.frequency is not None else None
         ),
         frequency_t_start=self.frequency_t_start.get_value(t),
+        injection_enabled=self.injection_enabled.get_value(t),
         ablation_time=self.ablation_time.get_value(t),
         use_model_ablation_time=self.use_model_ablation_time,
         current_time=jnp.asarray(t),

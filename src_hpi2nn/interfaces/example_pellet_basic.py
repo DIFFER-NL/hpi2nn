@@ -85,10 +85,10 @@ CONFIG = {
     'solver': {
         'solver_type': 'linear',
     },
-    # Mandatory for the HPI2-NN pellet source. The pellet-aware calculator is
-    # generic and defaults to the 'pellet' source name.
+    # Mandatory for the HPI2-NN pellet source: the pellet-aware calculator aligns
+    # time steps with the 'pellet' source's trigger times and ablation windows.
     'time_step_calculator': {
         'calculator_type': 'pellet_aware',
-        'base_calculator_type': 'fixed',
+        'base_calculator': {'calculator_type': 'fixed'},
     },
 }
