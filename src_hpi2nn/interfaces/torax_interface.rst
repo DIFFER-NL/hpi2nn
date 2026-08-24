@@ -98,17 +98,5 @@ Advice and known issues
 
 - Our tests showed that QLKNN produced better results than TGLF-NN during the
   post-pellet relaxation phase.
-- Using a sawtooth model can sometimes create a temperature collapse during the
-  relaxation phase. A pellet makes the pressure profile non-monotone, and a
-  sawtooth crash on such a profile can drive a low-temperature collapse. To
-  avoid this, you can suppress sawtooth crashes around each pellet with the generic
-  ``suppression_times`` / ``suppression_duration`` fields of the sawtooth
-  trigger model, setting ``suppression_times`` to the pellet ``trigger_times``:
-
-  .. code-block:: python
-
-      'mhd': {'sawtooth': {'trigger_model': {
-          'model_name': 'simple',
-          'suppression_times': [2.0, 6.0],   # = the pellet trigger_times
-          'suppression_duration': 0.05,      # [s], 
-      }}},
+- If a sawtooth crash occurs at the same time as a pellet trigger, it can conflict with 
+  the pellet deposition. If this ever happens, try to increase the trigger_tolerance in torax_interface.py.
