@@ -76,6 +76,12 @@ FOR JETTO multiply ne by 1e6
 HPI2-NN was trained using synthetic data from HPI2 simulations under various plasma conditions representative of WEST and ITER configurations.
 A different NN has been trained for every injection line and tokamak.
 
+Available lines: `WEST_upHFS`, `WEST_midHFS`, `WEST_LFS`, `ITER_upHFS`, `AUG_upHFS`.
+The WEST lower-HFS (X-point) line is **withdrawn**: too few training cases, and the
+wrong sign in its response to velocity, pellet size and temperature. That geometry is
+still recognised and is refused with an explicit error rather than being served by a
+neighbouring line.
+
 ## 📘 Citation
 
 A manuscript explaining and using this model is under preparation. So this repository is for the moment the only citable source.

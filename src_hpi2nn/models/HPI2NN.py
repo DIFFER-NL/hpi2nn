@@ -21,7 +21,10 @@ SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
 injection_lines = {
 	    "WEST_upperHFS": {"points": [(1.8, 0.47), (2.6192, -0.136)], "inj_value": 'WEST_upHFS'},
 	    "WEST_HFS": {"points": [(1.8, 0), (3.38, 0)], "inj_value": 'WEST_midHFS'},
-	    "WEST_X point": {"points": [(1.8, -0.33), (2.7336, -0.6884)], "inj_value": 'WEST_lowHFS'},
+	    # WEST_lowHFS withdrawn 2026-09-23: 654 training cases on a path pinned to the lower X-point; the model gets the sign of the velocity, size and Te dependence wrong and is incoherent inside its own training range. Uncomment to restore.
+	    # The geometry stays listed so that a lower-HFS injection is still identified
+	    # and refused explicitly, rather than being matched to a neighbouring WEST line.
+	    "WEST_X point": {"points": [(1.8, -0.33), (2.7336, -0.6884)], "inj_value": 'WEST_lowHFS', "withdrawn": True},
 	    "WEST_LFS": {"points": [(3.38, 0.08), (1.8, 0.08)], "inj_value": 'WEST_LFS'},
         "ITER_upperHFS": {"points": [(3.96, 1.64), (4.65, 0.89)], "inj_value": 'ITER_upHFS'},
         "AUG_upperHFS": {"points": [(1.255, 0.915), (1.5954, -0.0253)], "inj_value": 'AUG_upHFS'}
@@ -101,7 +104,13 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='WEST_midHFS':
         onnx_path = (WEIGHTS_PATH / "WEST_midHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_lowHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
+        raise ValueError(
+            "The WEST lower-HFS (X-point) model has been withdrawn: it is trained on "
+            "654 cases and does not reproduce the sign of the velocity, pellet-size or "
+            "Te dependence. Pass inj_value explicitly to use another line, or restore "
+            "the commented branch below to re-enable it."
+        )
+        # onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_LFS':
         onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
     elif inj_value=='ITER_upHFS':
