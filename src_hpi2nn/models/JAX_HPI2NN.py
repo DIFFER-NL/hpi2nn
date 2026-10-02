@@ -7,6 +7,7 @@
 
 #Dependencies (numpy, jax, onnx, onnxruntime, jaxonnxruntime) are installed automatically with `pip install -e .` (see pyproject.toml)
 
+import json
 import numpy as np
 import functools
 import importlib
@@ -20,8 +21,75 @@ THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parent.parent
 
 # Path to the model weights
-WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models" 
+WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models"
 SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
+
+# Lower bound of the ablation time (same as HPI2NN.py). t_abl is defined as
+# (in-plasma path length)/velocity + 0.1 ms, so it can never be shorter than 0.1 ms.
+T_ABL_MIN = 1e-4  # s
+
+# Training domain, as in HPI2NN.py: per injection line, the min and max over the training
+# rows of the physical quantities below and of the network inputs that describe the
+# profile shapes (artifacts_hpi2nn/scalers/<device>/training_domain.json).
+DOMAIN_RHO = (0.0, 0.5, 0.95)
+DOMAIN_TOLERANCE = 1e-4   # fraction of the range: float32 rounding never flags a training case
+DOMAIN_ADVICE = (
+    'In held-out tests the error grew 1.2-1.5 times within a quarter of a range beyond the '
+    'edge, and several-fold further out; pellet sizes and velocities outside the trained '
+    'values gave errors of 13-34% of the peak.'
+)
+
+
+def load_training_domain(device):
+    """The training domain of a device's models, or None if the artifacts have none."""
+    path = SCALERS_PATH / device / "training_domain.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value):
+    """The physical quantities the training domain is stated in, for one input."""
+    values = {'v_pellet': vel_value, 'V_pellet': size_value, 'abs_B0': jnp.abs(B0)}
+    for x in DOMAIN_RHO:
+        values[f'ne_{x:g}'] = jnp.interp(x, x_coord, ne)
+        values[f'Te_{x:g}'] = jnp.interp(x, x_coord, Te)
+    for x in (DOMAIN_RHO[0], DOMAIN_RHO[-1]):
+        values[f'TiTe_{x:g}'] = jnp.interp(x, x_coord, Ti / Te)
+    values['q95'] = jnp.interp(0.95, x_coord, q)
+    return values
+
+
+def print_out_of_domain(domain, inj_value, values):
+    """HPI2NN.py's out-of-domain warning, printed with jax.debug.print so that it also
+    works under jit: one line per quantity outside the training range, then the advice."""
+    entry = domain['lines'][inj_value]
+    labels = {key: (item['label'], item['unit'], item['scale'])
+              for key, item in domain['quantities'].items()}
+    labels.update({key: (item['label'], '', 1.0) for key, item in domain['features'].items()})
+    any_outside = jnp.asarray(False)
+    for key, (lo, hi) in entry['ranges'].items():
+        if key not in values:
+            continue
+        label, unit, scale = labels[key]
+        unit = f' [{unit}]' if unit else ''
+        note = ', not an input of this model' if key == 'abs_B0' and 'B0' not in entry['inputs'] else ''
+        width = hi - lo if hi > lo else max(abs(hi), 1e-300)
+        distance = jnp.maximum(lo - values[key], values[key] - hi) / width
+        outside = distance > DOMAIN_TOLERANCE
+        any_outside = jnp.logical_or(any_outside, outside)
+        message = ('Warning: HPI2-NN input outside the training range of ' + inj_value + ': '
+                   + label + ': {value}, trained on ' + f'{lo * scale:.4g} to {hi * scale:.4g}'
+                   + unit + ' ({distance} of the range beyond' + note + ')')
+        _ = jax.lax.cond(
+            outside,
+            lambda args, message=message, scale=scale: jax.debug.print(
+                message, value=args[0] * scale, distance=args[1]),
+            lambda _: None,
+            (values[key], distance),
+        )
+    _ = jax.lax.cond(any_outside, lambda _: jax.debug.print(DOMAIN_ADVICE), lambda _: None, ())
+
 
 injection_lines = {
 	    "WEST_upperHFS": {"points": [(1.8, 0.47), (2.6192, -0.136)], "inj_value": 'WEST_upHFS'},
@@ -160,13 +228,19 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='WEST_midHFS':
         onnx_path = (WEIGHTS_PATH / "WEST_midHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_lowHFS':
-        onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
+        raise ValueError(
+            "The WEST lower-HFS (X-point) model has been withdrawn: it is trained on "
+            "654 cases and does not reproduce the sign of the velocity, pellet-size or "
+            "Te dependence. Pass inj_value explicitly to use another line, or restore "
+            "the commented branch below to re-enable it."
+        )
+        # onnx_path = (WEIGHTS_PATH / "WEST_lowHFS_noBo_v4.onnx").resolve()
     elif inj_value=='WEST_LFS':
         onnx_path = (WEIGHTS_PATH / "WEST_LFS_noBo_v4.onnx").resolve()
     elif inj_value=='ITER_upHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
     elif inj_value=='AUG_upHFS':
-        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v4.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v5.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
@@ -180,17 +254,6 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         data_ne = jnp.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
         norm = jnp.load(SCALERS_PATH / "WEST" / "Normalization_v4.npz")
         components_ne = data_ne["components"]
-        
-        out_of_range = jnp.logical_or(jnp.abs(B0) > 3.77, jnp.abs(B0) < 3.74)
-
-        _ = jax.lax.cond(
-        out_of_range,
-        lambda _: jax.debug.print(
-            'B0 is too far from the training range of WEST (-3.74 T, -3.77 T)'
-        ),
-        lambda _: None,
-        (),
-        )
 
         # #Sign switch for WEST last 2 components due to issue when generating PCA
         # components_ne[1,:]=-components_ne[1,:]
@@ -244,8 +307,23 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     # Exponential fit for Ti/Te (JAX-only implementation)
     params_Ti_Te = _fit_exponential_ratio(x_coord, Ti / Te)
 
+    # Print a warning when the input is outside the training range of the line (as HPI2NN.py)
+    domain = load_training_domain(inj_value.split('_')[0])
+    if domain is not None and inj_value in domain['lines']:
+        values = domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value)
+        values.update(zip(('ne_1', 'ne_2', 'ne_3'), ne_in_points))
+        values.update(zip(('Te_1', 'Te_2', 'Te_3'), Te_in_points))
+        values.update(zip(('Ti/Te_a', 'Ti/Te_b'), params_Ti_Te))
+        values.update(zip(('q_rat_surf_1', 'q_rat_surf_2', 'q_rat_surf_3'), q_rat))
+        print_out_of_domain(domain, inj_value, values)
+
     if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'): #no B0 for WEST
         parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, params_inj))
+    elif inj_value=='AUG_upHFS':
+    # AUG v5 (2026-09-29): 12 inputs. No B0 (it barely varies in the AUG database) and
+    # no Ti/Te slope (Ti/Te is flat in every AUG plasma, so the slope is a constant);
+    # as accurate as the 14-input v4 without its response to the Ti shape.
+        parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te[:1], q_rat, params_inj))
     else:
         parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, jnp.asarray([B0]), params_inj))
     #parameters=jnp.concatenate((ne_in_points,Te_in_points,params_Ti_Te,q_rat,jnp.asarray([B0]),params_inj))
@@ -259,6 +337,11 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         #Important: if order changes this is not true
         scaler_X_mean = jnp.delete(scaler_X_mean, B0_IDX)
         scaler_X_std  = jnp.delete(scaler_X_std,  B0_IDX)
+    elif inj_value=='AUG_upHFS':
+        # the stored statistics cover all 14 inputs: drop Ti/Te_b (8th) and B0 (3rd from the end)
+        DROP_IDX = jnp.asarray([7, len(scaler_X_mean) - 3])
+        scaler_X_mean = jnp.delete(scaler_X_mean, DROP_IDX)
+        scaler_X_std  = jnp.delete(scaler_X_std,  DROP_IDX)
     scaler_y_mean= norm['scaler_y_mean']
     scaler_y_std=norm['scaler_y_std']
 
@@ -281,6 +364,20 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     # Te_param=y[6:]
     dne=1e19*two_gaussians(x_coord,*ne_param)
     # dTe=-1e2*two_gaussians(x_coord,*Te_param)
+
+    # Make sure that t_abl respects the 0.1 ms floor of its definition
+    _ = jax.lax.cond(
+        t_abl < T_ABL_MIN,
+        lambda value: jax.debug.print(
+            'Warning: HPI2-NN predicted an ablation time of {t_ms} ms, below the 0.1 ms '
+            'floor of its definition; it has been clamped to 0.1 ms. The input is likely '
+            'outside the training range.',
+            t_ms=value * 1e3,
+        ),
+        lambda _: None,
+        t_abl,
+    )
+    t_abl = jnp.maximum(t_abl, T_ABL_MIN)
 
     # Make sure that dne is positive
     neg_check = dne < 0

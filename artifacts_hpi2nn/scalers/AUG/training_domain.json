@@ -1,0 +1,213 @@
+{
+ "device": "AUG",
+ "description": "Training ranges of HPI2-NN per injection line: min and max over the rows each network is fitted on (train split, outliers excluded). evaluate_model warns when an input falls outside.",
+ "created_utc": "2026-10-02T11:23:17+00:00",
+ "hpi2nn_commit": "82764ae",
+ "source": {
+  "table": "Data/processed/df_NN_AUG.csv",
+  "database": "Data/raw/AUG/AUG_HPI2_DB.h5"
+ },
+ "quantities": {
+  "v_pellet": {
+   "label": "pellet velocity",
+   "unit": "m/s",
+   "scale": 1.0
+  },
+  "V_pellet": {
+   "label": "pellet volume",
+   "unit": "mm^3",
+   "scale": 1000000000.0
+  },
+  "abs_B0": {
+   "label": "|B0|",
+   "unit": "T",
+   "scale": 1.0
+  },
+  "ne_0": {
+   "label": "n_e at rho = 0",
+   "unit": "10^19 m^-3",
+   "scale": 1e-19
+  },
+  "ne_0.5": {
+   "label": "n_e at rho = 0.5",
+   "unit": "10^19 m^-3",
+   "scale": 1e-19
+  },
+  "ne_0.95": {
+   "label": "n_e at rho = 0.95",
+   "unit": "10^19 m^-3",
+   "scale": 1e-19
+  },
+  "Te_0": {
+   "label": "T_e at rho = 0",
+   "unit": "keV",
+   "scale": 0.001
+  },
+  "Te_0.5": {
+   "label": "T_e at rho = 0.5",
+   "unit": "keV",
+   "scale": 0.001
+  },
+  "Te_0.95": {
+   "label": "T_e at rho = 0.95",
+   "unit": "keV",
+   "scale": 0.001
+  },
+  "TiTe_0": {
+   "label": "T_i/T_e at rho = 0",
+   "unit": "",
+   "scale": 1.0
+  },
+  "TiTe_0.95": {
+   "label": "T_i/T_e at rho = 0.95",
+   "unit": "",
+   "scale": 1.0
+  },
+  "q95": {
+   "label": "q at rho = 0.95",
+   "unit": "",
+   "scale": 1.0
+  }
+ },
+ "features": {
+  "ne_1": {
+   "label": "n_e profile shape (PCA coefficient 1)"
+  },
+  "ne_2": {
+   "label": "n_e profile shape (PCA coefficient 2)"
+  },
+  "ne_3": {
+   "label": "n_e profile shape (PCA coefficient 3)"
+  },
+  "Te_1": {
+   "label": "T_e profile shape (PCA coefficient 1)"
+  },
+  "Te_2": {
+   "label": "T_e profile shape (PCA coefficient 2)"
+  },
+  "Te_3": {
+   "label": "T_e profile shape (PCA coefficient 3)"
+  },
+  "Ti/Te_a": {
+   "label": "T_i/T_e fit a*exp(b*rho): a"
+  },
+  "q_rat_surf_1": {
+   "label": "rho of rational q surface 1"
+  },
+  "q_rat_surf_2": {
+   "label": "rho of rational q surface 2"
+  },
+  "q_rat_surf_3": {
+   "label": "rho of rational q surface 3"
+  }
+ },
+ "lines": {
+  "AUG_upHFS": {
+   "n_train": 1102,
+   "inputs": [
+    "ne_1",
+    "ne_2",
+    "ne_3",
+    "Te_1",
+    "Te_2",
+    "Te_3",
+    "Ti/Te_a",
+    "q_rat_surf_1",
+    "q_rat_surf_2",
+    "q_rat_surf_3",
+    "size",
+    "vel"
+   ],
+   "ranges": {
+    "v_pellet": [
+     150.0,
+     560.0
+    ],
+    "V_pellet": [
+     1.1627906976744199e-09,
+     5.980066445182731e-09
+    ],
+    "abs_B0": [
+     2.432039593669281,
+     2.5588290218855723
+    ],
+    "ne_0": [
+     2.067232713214211e+19,
+     1.3023176910113761e+20
+    ],
+    "ne_0.5": [
+     1.4006513197066406e+19,
+     1.1089914172485912e+20
+    ],
+    "ne_0.95": [
+     1.0071475618718786e+19,
+     7.87967858458659e+19
+    ],
+    "Te_0": [
+     978.3238525390625,
+     8586.470703125
+    ],
+    "Te_0.5": [
+     736.2209432147407,
+     3671.1982208391373
+    ],
+    "Te_0.95": [
+     55.7173622302403,
+     778.426932677137
+    ],
+    "TiTe_0": [
+     1.0402406623973857,
+     3.5970208689244414
+    ],
+    "TiTe_0.95": [
+     1.0401703966430988,
+     3.5981196960530846
+    ],
+    "q95": [
+     3.5963341847937937,
+     4.606101549018066
+    ],
+    "ne_1": [
+     -19.32196564179913,
+     34.11066660485899
+    ],
+    "ne_2": [
+     -4.845157411671911,
+     5.905274896542291
+    ],
+    "ne_3": [
+     -1.3992796562266467,
+     5.226895987823143
+    ],
+    "Te_1": [
+     -17.902001857432257,
+     24.98426145795305
+    ],
+    "Te_2": [
+     -5.885393692300838,
+     6.7993318676101016
+    ],
+    "Te_3": [
+     -5.914990259174721,
+     7.722899645943739
+    ],
+    "Ti/Te_a": [
+     1.0540830894608064,
+     3.663034883964282
+    ],
+    "q_rat_surf_1": [
+     0.5642774053414291,
+     0.9032200091934944
+    ],
+    "q_rat_surf_2": [
+     0.6905338857255378,
+     0.9408064859838882
+    ],
+    "q_rat_surf_3": [
+     0.7794148537865645,
+     0.9649221265836734
+    ]
+   }
+  }
+ }
+}

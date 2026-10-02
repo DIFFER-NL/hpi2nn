@@ -3,6 +3,7 @@
 
 #HPI2-NN model provides change in electron density due to pellet injection. Change in temperature is calculated through the adiabatic constraint.
 
+import json
 import numpy as np
 from scipy.optimize import curve_fit
 import onnxruntime as ort
@@ -15,8 +16,91 @@ THIS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = THIS_DIR.parent.parent
 
 # Path to the model weights
-WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models" 
+WEIGHTS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "models"
 SCALERS_PATH = REPO_ROOT / "artifacts_hpi2nn" / "scalers"
+
+# Lower bound of the ablation time. t_abl is defined as (in-plasma path length)/velocity
+# + 0.1 ms, so it can never be shorter than 0.1 ms; the network predicts it as a free
+# output and can undershoot, typically for very hot plasmas or other extrapolations.
+T_ABL_MIN = 1e-4  # s
+
+
+class HPI2NNOutOfDomainWarning(UserWarning):
+    """An input lies outside the range the model was trained on.
+
+    evaluate_model issues it once per call, listing every quantity outside the training
+    range of the injection line; the outputs are not changed. Silence it with
+    warnings.simplefilter("ignore", HPI2NNOutOfDomainWarning), or make it an error with
+    "error" instead of "ignore".
+    """
+
+
+# Training domain (artifacts_hpi2nn/scalers/<device>/training_domain.json): per injection
+# line, the min and max over the rows the network was trained on of the physical
+# quantities below and of the network inputs that describe the profile shapes. Profiles
+# are read at these normalised radii, as in the paper's table of training ranges.
+DOMAIN_RHO = (0.0, 0.5, 0.95)
+# An input closer to an edge than this fraction of the range counts as inside, so that
+# rounding (float32 in the JAX version) never flags a case from the training set itself.
+DOMAIN_TOLERANCE = 1e-4
+DOMAIN_ADVICE = (
+    'In held-out tests the error grew 1.2-1.5 times within a quarter of a range beyond the '
+    'edge, and several-fold further out; pellet sizes and velocities outside the trained '
+    'values gave errors of 13-34% of the peak.'
+)
+
+
+def load_training_domain(device):
+    """The training domain of a device's models, or None if the artifacts have none."""
+    path = SCALERS_PATH / device / "training_domain.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value):
+    """The physical quantities the training domain is stated in, for one input."""
+    values = {'v_pellet': float(vel_value), 'V_pellet': float(size_value),
+              'abs_B0': float(np.abs(B0))}
+    for x in DOMAIN_RHO:
+        values[f'ne_{x:g}'] = float(np.interp(x, x_coord, ne))
+        values[f'Te_{x:g}'] = float(np.interp(x, x_coord, Te))
+    for x in (DOMAIN_RHO[0], DOMAIN_RHO[-1]):
+        values[f'TiTe_{x:g}'] = float(np.interp(x, x_coord, Ti / Te))
+    values['q95'] = float(np.interp(0.95, x_coord, q))
+    return values
+
+
+def out_of_domain(domain, inj_value, values):
+    """Every value outside the training range of the line, as (key, value, min, max,
+    distance beyond the edge in units of the range)."""
+    found = []
+    for key, (lo, hi) in domain['lines'][inj_value]['ranges'].items():
+        if key not in values:
+            continue
+        width = hi - lo if hi > lo else max(abs(hi), 1e-300)
+        distance = max(lo - values[key], values[key] - hi) / width
+        if distance > DOMAIN_TOLERANCE:
+            found.append((key, values[key], lo, hi, distance))
+    return found
+
+
+def domain_message(domain, inj_value, found):
+    """The text of the out-of-domain warning."""
+    inputs = domain['lines'][inj_value]['inputs']
+    labels = {key: (entry['label'], entry['unit'], entry['scale'])
+              for key, entry in domain['quantities'].items()}
+    labels.update({key: (entry['label'], '', 1.0) for key, entry in domain['features'].items()})
+    lines = [f'HPI2-NN input outside the training range of {inj_value}:']
+    for key, value, lo, hi, distance in found:
+        label, unit, scale = labels[key]
+        unit = f' [{unit}]' if unit else ''
+        note = ', not an input of this model' if key == 'abs_B0' and 'B0' not in inputs else ''
+        lines.append(f'  {label}: {value * scale:.4g}, trained on {lo * scale:.4g} to '
+                     f'{hi * scale:.4g}{unit} ({distance:.2f} of the range beyond{note})')
+    lines.append(DOMAIN_ADVICE)
+    return '\n'.join(lines)
+
 
 injection_lines = {
 	    "WEST_upperHFS": {"points": [(1.8, 0.47), (2.6192, -0.136)], "inj_value": 'WEST_upHFS'},
@@ -116,7 +200,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='ITER_upHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
     elif inj_value=='AUG_upHFS':
-        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v4.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v5.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
@@ -128,9 +212,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         data_ne = np.load(SCALERS_PATH  / "WEST" / "pca_ne_data.npz")
         norm = np.load(SCALERS_PATH / "WEST" / "Normalization_v4.npz")
         components_ne = data_ne["components"]
-        if (np.abs(B0)>3.77) or (np.abs(B0)<3.74):
-            warnings.warn(f'B0={B0:.3f} T is outside the WEST training range (-3.74 T, -3.77 T).')
-            
+
     elif inj_value=="ITER_upHFS":
         data_Te = np.load(SCALERS_PATH / "ITER" / "pca_Te_data.npz")
         data_ne = np.load(SCALERS_PATH / "ITER" / "pca_ne_data.npz")
@@ -185,8 +267,26 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     #Exponential fit for Ti/Te
     params_Ti_Te, covariance = curve_fit(expo, x_coord, Ti/Te, p0=[1,1])
 
+    #Warn when the input is outside the training range of the line (B0 included for WEST)
+    domain = load_training_domain(inj_value.split('_')[0])
+    if domain is not None and inj_value in domain['lines']:
+        values = domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value)
+        values.update(zip(('ne_1', 'ne_2', 'ne_3'), ne_in_points))
+        values.update(zip(('Te_1', 'Te_2', 'Te_3'), Te_in_points))
+        values.update(zip(('Ti/Te_a', 'Ti/Te_b'), params_Ti_Te))
+        values.update(zip(('q_rat_surf_1', 'q_rat_surf_2', 'q_rat_surf_3'), q_rat))
+        found = out_of_domain(domain, inj_value, values)
+        if found:
+            warnings.warn(domain_message(domain, inj_value, found), HPI2NNOutOfDomainWarning,
+                          stacklevel=2)
+
     if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'): #no B0 for WEST
         parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, params_inj))
+    elif inj_value=='AUG_upHFS':
+    # AUG v5 (2026-09-29): 12 inputs. No B0 (it barely varies in the AUG database) and
+    # no Ti/Te slope (Ti/Te is flat in every AUG plasma, so the slope is a constant);
+    # as accurate as the 14-input v4 without its response to the Ti shape.
+        parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te[:1], q_rat, params_inj))
     else:
         parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, np.array([B0]), params_inj))
     # parameters=np.concatenate((ne_in_points,Te_in_points,params_Ti_Te,q_rat,np.array([B0]),params_inj))
@@ -200,6 +300,11 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
         #Important: if order changes this is not true
         scaler_X_mean = np.delete(scaler_X_mean, B0_IDX)
         scaler_X_std  = np.delete(scaler_X_std,  B0_IDX)
+    elif inj_value=='AUG_upHFS':
+        # the stored statistics cover all 14 inputs: drop Ti/Te_b (8th) and B0 (3rd from the end)
+        DROP_IDX = [7, len(scaler_X_mean) - 3]
+        scaler_X_mean = np.delete(scaler_X_mean, DROP_IDX)
+        scaler_X_std  = np.delete(scaler_X_std,  DROP_IDX)
     scaler_y_mean= norm['scaler_y_mean']
     scaler_y_std=norm['scaler_y_std']
 
@@ -227,6 +332,16 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     # Te_param=y[6:]
     dne=1e19*two_gaussians(x_coord,*ne_param)
     # dTe=-1e2*two_gaussians(x_coord,*Te_param)
+
+    #Make sure that t_abl respects the 0.1 ms floor of its definition
+    if t_abl < T_ABL_MIN:
+        warnings.warn(
+            f'HPI2-NN predicted an ablation time of {t_abl*1e3:.3f} ms, below the 0.1 ms '
+            f'floor of its definition; it has been clamped to 0.1 ms. The input is likely '
+            f'outside the training range.',
+            stacklevel=2,
+        )
+        t_abl = T_ABL_MIN
 
     #Make sure that dne is positive
     if np.count_nonzero(dne<0)>0:

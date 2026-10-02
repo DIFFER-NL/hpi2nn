@@ -27,6 +27,11 @@ dependencies = [
 # The TORAX interface (src_hpi2nn/interfaces/torax_interface.py) requires TORAX.
 # It is optional so that using HPI2-NN standalone does not force a TORAX install.
 torax = ["torax"]
+# The test suite every released model must pass (tests_hpi2nn/, see README.md).
+test = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests_hpi2nn"]
 
 [tool.setuptools]
 # Map the repo root to the `hpi2nn` package so existing imports keep working:
