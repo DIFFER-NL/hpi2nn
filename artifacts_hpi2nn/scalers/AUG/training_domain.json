@@ -1,7 +1,7 @@
 {
  "device": "AUG",
  "description": "Training ranges of HPI2-NN per injection line: min and max over the rows each network is fitted on (train split, outliers excluded). evaluate_model warns when an input falls outside.",
- "created_utc": "2026-10-07T10:38:42+00:00",
+ "created_utc": "2026-10-07T10:45:22+00:00",
  "hpi2nn_commit": "24fd626",
  "source": {
   "table": "Data/processed/df_NN_AUG.csv",
@@ -94,7 +94,7 @@
    "label": "T_e profile shape (PCA coefficient 3)"
   },
   "Ti/Te_a": {
-   "label": "T_i/T_e fit a*exp(b*rho): a"
+   "label": "mean T_i/T_e over rho <= 0.95"
   },
   "q_rat_surf_1": {
    "label": "rho of rational q surface 1"
@@ -201,8 +201,8 @@
      7.722899645943739
     ],
     "Ti/Te_a": [
-     1.0540830894608064,
-     3.663034883964282
+     1.0386216409380105,
+     3.596603044049081
     ],
     "q_rat_surf_1": [
      0.5642774053414291,

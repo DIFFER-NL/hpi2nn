@@ -37,7 +37,7 @@ RELEASED = {
     "WEST_midHFS": ("WEST", "WEST_midHFS_noBo_v4.onnx", 13),
     "WEST_LFS": ("WEST", "WEST_LFS_noBo_v4.onnx", 13),
     "ITER_upHFS": ("ITER", "ITER_upHFS_v4.onnx", 14),
-    "AUG_upHFS": ("AUG", "AUG_upHFS_v5.onnx", 12),
+    "AUG_upHFS": ("AUG", "AUG_upHFS_v6.onnx", 12),
 }
 #: Normalization file per device, as evaluate_model loads it.
 NORMALIZATION = {"WEST": "Normalization_v4.npz", "ITER": "Normalization_v4.npz",

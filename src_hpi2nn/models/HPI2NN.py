@@ -43,6 +43,8 @@ DOMAIN_RHO = (0.0, 0.5, 0.95)
 # The flatness of T_i/T_e is its largest relative departure from its own mean over
 # rho <= DOMAIN_FLAT_RHO, on the 101-point grid (AUG's training plasmas have T_i = k T_e).
 DOMAIN_FLAT_RHO = 0.95
+# AUG's Ti/Te input is the mean of Ti/Te over rho <= TI_TE_MEAN_RHO (v6).
+TI_TE_MEAN_RHO = 0.95
 # An input closer to an edge than this fraction of the range counts as inside, so that
 # rounding (float32 in the JAX version) never flags a case from the training set itself.
 DOMAIN_TOLERANCE = 1e-4
@@ -208,7 +210,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='ITER_upHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
     elif inj_value=='AUG_upHFS':
-        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v5.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v6.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
@@ -272,9 +274,14 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
             else:
                 q_rat=np.append(q_rat,i)
 
-    #Exponential fit for Ti/Te, on the same 101-point grid as the profiles (and as the
-    #training data), so that it does not depend on the caller's radial grid
-    params_Ti_Te, covariance = curve_fit(expo, rho_grid, Ti_interp/Te_interp, p0=[1,1])
+    #Ti/Te on the same 101-point grid as the profiles (and as the training data), so that
+    #it does not depend on the caller's radial grid: for AUG, whose training plasmas all have
+    #Ti = k Te, its mean over rho <= 0.95; elsewhere the exponential fit a*exp(b*rho)
+    ratio_grid = Ti_interp/Te_interp
+    if inj_value=='AUG_upHFS':
+        params_Ti_Te = np.array([ratio_grid[rho_grid <= TI_TE_MEAN_RHO + 1e-9].mean()])
+    else:
+        params_Ti_Te, covariance = curve_fit(expo, rho_grid, ratio_grid, p0=[1,1])
 
     #Warn when the input is outside the training range of the line (B0 included for WEST)
     domain = load_training_domain(inj_value.split('_')[0])
@@ -292,9 +299,9 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'): #no B0 for WEST
         parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, params_inj))
     elif inj_value=='AUG_upHFS':
-    # AUG v5 (2026-09-29): 12 inputs. No B0 (it barely varies in the AUG database) and
-    # no Ti/Te slope (Ti/Te is flat in every AUG plasma, so the slope is a constant);
-    # as accurate as the 14-input v4 without its response to the Ti shape.
+    # AUG v6 (2026-10-08): 12 inputs. No B0 (it barely varies in the AUG database), and
+    # Ti/Te enters as its mean over rho <= 0.95: every AUG training plasma has Ti = k Te,
+    # and the mean is the best flat description of any input.
         parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te[:1], q_rat, params_inj))
     else:
         parameters = np.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, np.array([B0]), params_inj))

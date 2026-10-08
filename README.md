@@ -113,11 +113,13 @@ wrong sign in its response to velocity, pellet size and temperature. That geomet
 still recognised and is refused with an explicit error rather than being served by a
 neighbouring line.
 
-The AUG model (`AUG_upHFS_v5.onnx`) takes 12 inputs instead of 14: B0 and the slope of
-the Ti/Te fit are left out, because B0 barely varies in the AUG database and Ti/Te is
+The AUG model (`AUG_upHFS_v6.onnx`) takes 12 inputs instead of 14: B0 is left out,
+because it barely varies in the AUG database, and Ti/Te enters as one number, its mean
+over rho <= 0.95 instead of the two parameters of the exponential fit, because Ti/Te is
 flat in every AUG plasma. B0 is still an argument of `evaluate_model` (ITER uses it, and
 every line checks it against its training range) but does not change the AUG result. The
-AUG model was trained only on plasmas with Ti proportional to Te.
+AUG model was trained only on plasmas with Ti proportional to Te, and warns when the
+Ti/Te given departs from flat by more than its training plasmas do.
 
 ## ✅ Tests
 

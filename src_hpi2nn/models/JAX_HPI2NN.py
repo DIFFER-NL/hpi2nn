@@ -34,6 +34,8 @@ T_ABL_MIN = 1e-4  # s
 DOMAIN_RHO = (0.0, 0.5, 0.95)
 DOMAIN_FLAT_RHO = 0.95    # flatness of T_i/T_e over rho <= 0.95, as in HPI2NN.py
 _FLAT_MASK = np.linspace(0, 1, 101) <= DOMAIN_FLAT_RHO + 1e-9
+TI_TE_MEAN_RHO = 0.95    # AUG's Ti/Te input is the mean over rho <= 0.95 (v6), as in HPI2NN.py
+_MEAN_MASK = np.linspace(0, 1, 101) <= TI_TE_MEAN_RHO + 1e-9
 DOMAIN_TOLERANCE = 1e-4   # fraction of the range: float32 rounding never flags a training case
 DOMAIN_ADVICE = (
     'In held-out tests the error grew 1.2-1.5 times within a quarter of a range beyond the '
@@ -246,7 +248,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     elif inj_value=='ITER_upHFS':
         onnx_path = (WEIGHTS_PATH / "ITER_upHFS_v4.onnx").resolve()
     elif inj_value=='AUG_upHFS':
-        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v5.onnx").resolve()
+        onnx_path = (WEIGHTS_PATH / "AUG_upHFS_v6.onnx").resolve()
     else:
         raise ValueError("This is not a injection/Tokamak available in HPI2-NN")
  
@@ -310,9 +312,13 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     q_rat = jnp.where(top3_idx < n_candidates, q_candidates[top3_idx], 1.0)
     #If there less than 3 valid coordinates, the missing coordinates are replaced with 1.0, but this likely indicates a problem with the configuration being used
    
-    # Exponential fit for Ti/Te (JAX-only implementation)
-    # on the same 101-point grid as the profiles (and as training), whatever the caller's grid
-    params_Ti_Te = _fit_exponential_ratio(interp_grid, Ti_interp / Te_interp)
+    # Ti/Te on the same 101-point grid as the profiles (and as training), whatever the
+    # caller's grid: for AUG its mean over rho <= 0.95 (Ti = k Te in every AUG training
+    # plasma); elsewhere the exponential fit (JAX-only implementation)
+    if inj_value=='AUG_upHFS':
+        params_Ti_Te = jnp.mean((Ti_interp / Te_interp)[_MEAN_MASK])[None]
+    else:
+        params_Ti_Te = _fit_exponential_ratio(interp_grid, Ti_interp / Te_interp)
 
     # Print a warning when the input is outside the training range of the line (as HPI2NN.py)
     domain = load_training_domain(inj_value.split('_')[0])
@@ -327,9 +333,9 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     if inj_value in ('WEST_upHFS', 'WEST_midHFS', 'WEST_lowHFS', 'WEST_LFS'): #no B0 for WEST
         parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, params_inj))
     elif inj_value=='AUG_upHFS':
-    # AUG v5 (2026-09-29): 12 inputs. No B0 (it barely varies in the AUG database) and
-    # no Ti/Te slope (Ti/Te is flat in every AUG plasma, so the slope is a constant);
-    # as accurate as the 14-input v4 without its response to the Ti shape.
+    # AUG v6 (2026-10-08): 12 inputs. No B0 (it barely varies in the AUG database), and
+    # Ti/Te enters as its mean over rho <= 0.95: every AUG training plasma has Ti = k Te,
+    # and the mean is the best flat description of any input.
         parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te[:1], q_rat, params_inj))
     else:
         parameters = jnp.concatenate((ne_in_points, Te_in_points, params_Ti_Te, q_rat, jnp.asarray([B0]), params_inj))
