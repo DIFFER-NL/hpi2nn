@@ -63,7 +63,8 @@ python inference_hpi2nn/simple_inference.py
 ```
 
 Inputs: Pellet radius in m, velocity in m/s, Te and Ti profiles in eV, ne profile in m-3, B0 in T, first point (R1,Z1) and second point (R2,Z2) in m
-x coord preferred in rho_tor_norm, but using a_norm will not impact too much the result
+x coord preferred in rho_tor_norm, but using a_norm will not impact too much the result.
+The profiles can be given on any radial grid: they are interpolated onto the 101-point grid the models were trained on before any feature (PCA coefficients, Ti/Te fit) is computed
 B0 is suppose to be negative always (inforced anyway in inference)
 
 Outputs: deposition profile dne (m-3) and temperature change profile dTe (eV) same x coord as given in input, and the ablation time t_abl (s, never below 0.1 ms)
@@ -77,9 +78,11 @@ FOR JETTO multiply ne by 1e6
 
 Each model ships its training ranges (`artifacts_hpi2nn/scalers/<device>/training_domain.json`):
 per injection line, the minimum and maximum over its training cases of the pellet
-velocity and volume, |B0|, ne and Te at rho = 0, 0.5 and 0.95, Ti/Te at rho = 0 and 0.95
-and q at rho = 0.95, and of the network inputs that describe the profile shapes (ne and Te
-PCA coefficients, Ti/Te fit, rational-q surfaces). When an input falls outside,
+velocity and volume, |B0|, ne and Te at rho = 0, 0.5 and 0.95, Ti/Te at rho = 0 and 0.95,
+q at rho = 0.95 and the largest departure of Ti/Te from flat over rho <= 0.95 (the AUG
+plasmas all have Ti = k Te, so a non-flat Ti/Te is flagged there), and of the network
+inputs that describe the profile shapes (ne and Te PCA coefficients, Ti/Te fit,
+rational-q surfaces). When an input falls outside,
 `evaluate_model` warns once per call, listing each quantity, its value, the training
 range and how far beyond the edge it is in units of the range. The outputs are not
 changed. In held-out tests the error grew 1.2-1.5 times within a quarter of a range

@@ -1,8 +1,8 @@
 {
  "device": "AUG",
  "description": "Training ranges of HPI2-NN per injection line: min and max over the rows each network is fitted on (train split, outliers excluded). evaluate_model warns when an input falls outside.",
- "created_utc": "2026-10-02T11:23:17+00:00",
- "hpi2nn_commit": "82764ae",
+ "created_utc": "2026-10-07T10:38:42+00:00",
+ "hpi2nn_commit": "24fd626",
  "source": {
   "table": "Data/processed/df_NN_AUG.csv",
   "database": "Data/raw/AUG/AUG_HPI2_DB.h5"
@@ -67,6 +67,11 @@
    "label": "q at rho = 0.95",
    "unit": "",
    "scale": 1.0
+  },
+  "TiTe_flat": {
+   "label": "T_i/T_e departure from flat, rho <= 0.95",
+   "unit": "%",
+   "scale": 100.0
   }
  },
  "features": {
@@ -166,6 +171,10 @@
     "q95": [
      3.5963341847937937,
      4.606101549018066
+    ],
+    "TiTe_flat": [
+     0.0,
+     0.033756600732342545
     ],
     "ne_1": [
      -19.32196564179913,

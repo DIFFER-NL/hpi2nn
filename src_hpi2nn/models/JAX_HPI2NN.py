@@ -32,6 +32,8 @@ T_ABL_MIN = 1e-4  # s
 # rows of the physical quantities below and of the network inputs that describe the
 # profile shapes (artifacts_hpi2nn/scalers/<device>/training_domain.json).
 DOMAIN_RHO = (0.0, 0.5, 0.95)
+DOMAIN_FLAT_RHO = 0.95    # flatness of T_i/T_e over rho <= 0.95, as in HPI2NN.py
+_FLAT_MASK = np.linspace(0, 1, 101) <= DOMAIN_FLAT_RHO + 1e-9
 DOMAIN_TOLERANCE = 1e-4   # fraction of the range: float32 rounding never flags a training case
 DOMAIN_ADVICE = (
     'In held-out tests the error grew 1.2-1.5 times within a quarter of a range beyond the '
@@ -57,6 +59,9 @@ def domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value):
     for x in (DOMAIN_RHO[0], DOMAIN_RHO[-1]):
         values[f'TiTe_{x:g}'] = jnp.interp(x, x_coord, Ti / Te)
     values['q95'] = jnp.interp(0.95, x_coord, q)
+    grid = jnp.linspace(0, 1, 101)
+    ratio = (jnp.interp(grid, x_coord, Ti) / jnp.interp(grid, x_coord, Te))[_FLAT_MASK]
+    values['TiTe_flat'] = jnp.max(jnp.abs(ratio / jnp.mean(ratio) - 1.0))
     return values
 
 
@@ -218,6 +223,7 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     interp_grid = jnp.linspace(0,1,101)
     Te_interp = jnp.interp(interp_grid, x_coord, Te)
     ne_interp = jnp.interp(interp_grid, x_coord, ne)
+    Ti_interp = jnp.interp(interp_grid, x_coord, Ti)
     if inj_value==None:
         raise ValueError("In this version you need to provide the injection line to be able to load the correct model. Currently, giving 2 points to have the program to find an injection line does not work.")
 
@@ -305,7 +311,8 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     #If there less than 3 valid coordinates, the missing coordinates are replaced with 1.0, but this likely indicates a problem with the configuration being used
    
     # Exponential fit for Ti/Te (JAX-only implementation)
-    params_Ti_Te = _fit_exponential_ratio(x_coord, Ti / Te)
+    # on the same 101-point grid as the profiles (and as training), whatever the caller's grid
+    params_Ti_Te = _fit_exponential_ratio(interp_grid, Ti_interp / Te_interp)
 
     # Print a warning when the input is outside the training range of the line (as HPI2NN.py)
     domain = load_training_domain(inj_value.split('_')[0])

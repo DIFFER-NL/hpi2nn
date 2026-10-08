@@ -40,6 +40,9 @@ class HPI2NNOutOfDomainWarning(UserWarning):
 # quantities below and of the network inputs that describe the profile shapes. Profiles
 # are read at these normalised radii, as in the paper's table of training ranges.
 DOMAIN_RHO = (0.0, 0.5, 0.95)
+# The flatness of T_i/T_e is its largest relative departure from its own mean over
+# rho <= DOMAIN_FLAT_RHO, on the 101-point grid (AUG's training plasmas have T_i = k T_e).
+DOMAIN_FLAT_RHO = 0.95
 # An input closer to an edge than this fraction of the range counts as inside, so that
 # rounding (float32 in the JAX version) never flags a case from the training set itself.
 DOMAIN_TOLERANCE = 1e-4
@@ -68,6 +71,9 @@ def domain_values(x_coord, Te, ne, Ti, q, B0, size_value, vel_value):
     for x in (DOMAIN_RHO[0], DOMAIN_RHO[-1]):
         values[f'TiTe_{x:g}'] = float(np.interp(x, x_coord, Ti / Te))
     values['q95'] = float(np.interp(0.95, x_coord, q))
+    grid = np.linspace(0, 1, 101)
+    ratio = (np.interp(grid, x_coord, Ti) / np.interp(grid, x_coord, Te))[grid <= DOMAIN_FLAT_RHO + 1e-9]
+    values['TiTe_flat'] = float(np.max(np.abs(ratio / ratio.mean() - 1.0)))
     return values
 
 
@@ -176,8 +182,10 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
     
     B0=-np.abs(B0)
     # Interpolate and scale new profile
-    Te_interp = np.interp(np.linspace(0,1,101), x_coord, Te)
-    ne_interp = np.interp(np.linspace(0,1,101), x_coord, ne)
+    rho_grid = np.linspace(0,1,101)
+    Te_interp = np.interp(rho_grid, x_coord, Te)
+    ne_interp = np.interp(rho_grid, x_coord, ne)
+    Ti_interp = np.interp(rho_grid, x_coord, Ti)
     if inj_value==None:
         inj_value = find_closest_injection_line(first_point, second_point)
 
@@ -264,8 +272,9 @@ def evaluate_model( pellet_radius, vel_value, x_coord, Te, ne, Ti, q, B0, first_
             else:
                 q_rat=np.append(q_rat,i)
 
-    #Exponential fit for Ti/Te
-    params_Ti_Te, covariance = curve_fit(expo, x_coord, Ti/Te, p0=[1,1])
+    #Exponential fit for Ti/Te, on the same 101-point grid as the profiles (and as the
+    #training data), so that it does not depend on the caller's radial grid
+    params_Ti_Te, covariance = curve_fit(expo, rho_grid, Ti_interp/Te_interp, p0=[1,1])
 
     #Warn when the input is outside the training range of the line (B0 included for WEST)
     domain = load_training_domain(inj_value.split('_')[0])

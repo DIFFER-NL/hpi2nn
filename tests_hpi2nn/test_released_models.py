@@ -15,7 +15,8 @@
    higher peak and a longer ablation, a faster pellet a shorter ablation.
 6. Injection-line selection from the geometry, and the withdrawn WEST lower-HFS line
    refused.
-8. Out-of-domain guard: silent inside the training domain, warning outside it.
+8. Out-of-domain guard: silent inside the training domain, warning outside it (and, on
+   AUG, when T_i/T_e is not flat).
 
 Test 7 (NumPy and JAX agree) is in test_jax.py.
 
@@ -251,3 +252,12 @@ def test_guard_warns_outside_domain(released, quantity, artifacts_under_test):
     found = ood_warnings(**arguments)
     assert len(found) == 1, f"{line}: {len(found)} out-of-domain warnings for {quantity}"
     assert quantity in found[0], f"{line}: the warning does not name {quantity}:\n{found[0]}"
+
+
+def test_aug_warns_when_ti_te_not_flat():
+    """AUG's plasmas all have T_i = k T_e: a T_i/T_e rising by +/-20% across the profile is
+    outside its training domain and must be named in the warning."""
+    ref = reference("AUG_upHFS")
+    ti = ref["in_domain_Ti"][0] * (0.8 + 0.4 * ref["rho"])
+    found = ood_warnings(**case_arguments(ref, 0, "AUG_upHFS", prefix="in_domain_", Ti=ti))
+    assert len(found) == 1 and "departure from flat" in found[0], found

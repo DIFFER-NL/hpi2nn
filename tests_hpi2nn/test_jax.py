@@ -91,3 +91,10 @@ def test_jax_guard(released):
     *_, printed = run_jax(**case_arguments(ref, 0, line, prefix="in_domain_", vel_value=faster))
     assert "outside the training range" in printed and "pellet velocity" in printed, \
         f"{line}: no warning for a pellet at {faster:.0f} m/s:\n{printed}"
+
+
+def test_jax_aug_warns_when_ti_te_not_flat():
+    ref = reference("AUG_upHFS")
+    ti = ref["in_domain_Ti"][0] * (0.8 + 0.4 * ref["rho"])
+    *_, printed = run_jax(**case_arguments(ref, 0, "AUG_upHFS", prefix="in_domain_", Ti=ti))
+    assert "departure from flat" in printed, printed

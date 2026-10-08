@@ -1,8 +1,8 @@
 {
  "device": "ITER",
  "description": "Training ranges of HPI2-NN per injection line: min and max over the rows each network is fitted on (train split, outliers excluded). evaluate_model warns when an input falls outside.",
- "created_utc": "2026-10-02T11:23:15+00:00",
- "hpi2nn_commit": "82764ae",
+ "created_utc": "2026-10-07T10:38:39+00:00",
+ "hpi2nn_commit": "24fd626",
  "source": {
   "table": "Data/processed/df_NN_ITER.csv",
   "database": "Data/raw/ITER/ITER_HPI2_DB.h5"
@@ -67,6 +67,11 @@
    "label": "q at rho = 0.95",
    "unit": "",
    "scale": 1.0
+  },
+  "TiTe_flat": {
+   "label": "T_i/T_e departure from flat, rho <= 0.95",
+   "unit": "%",
+   "scale": 100.0
   }
  },
  "features": {
@@ -171,6 +176,10 @@
     "q95": [
      2.872752721475037,
      5.316726759554382
+    ],
+    "TiTe_flat": [
+     0.0,
+     0.680365430384348
     ],
     "ne_1": [
      -9.499141764893364,
