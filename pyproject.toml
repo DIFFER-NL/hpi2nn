@@ -27,6 +27,9 @@ dependencies = [
 # The TORAX interface (src_hpi2nn/interfaces/torax_interface.py) requires TORAX.
 # It is optional so that using HPI2-NN standalone does not force a TORAX install.
 torax = ["torax"]
+# The IMAS interface (src_hpi2nn/interfaces/imas_interface.py) requires IMAS-Python and,
+# for the HDF5 and MDSplus backends, the IMAS access layer (imas-core).
+imas = ["imas-python", "imas-core"]
 # The test suite every released model must pass (tests_hpi2nn/, see README.md).
 test = ["pytest"]
 

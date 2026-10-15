@@ -74,6 +74,103 @@ dTe is not a separate network output: it follows from dne by conserving the elec
 For JETTO implementation--> inference_hpi2nn/HPI2-NN_JETTO.py
 FOR JETTO multiply ne by 1e6
 
+### IMAS inference
+
+`src_hpi2nn/interfaces/imas_interface.py` runs HPI2-NN on a pellet stored in an IMAS data
+entry and writes the result to another entry. It is the HPI2-NN counterpart of HPI2's
+`hpi2_imas_interface.m` and takes the same arguments. Like HPI2's interface, it computes one pellet per call.
+It needs IMAS-Python and, for the HDF5 and MDSplus backends, the IMAS access layer:
+
+```bash
+pip install -e ".[imas]"        # imas-python and imas-core
+```
+
+The quickest way in is `inference_hpi2nn/HPI2-NN_IMAS_inference.py`: fill in its fields (time,
+input entry, output entry, pellet) and run it from hpi2nn/:
+
+```bash
+python inference_hpi2nn/HPI2-NN_IMAS_inference.py
+```
+
+The same from the command line, in hpi2nn/ (or `python -m hpi2nn.src_hpi2nn.interfaces.imas_interface`
+from anywhere, with the package installed):
+
+```bash
+# entry in the IMAS public folder (~<user>/public/imasdb/west/3/54304/0), result in run 1
+python -m src_hpi2nn.interfaces.imas_interface --time -37.5 --shot 54304 --run 0 --tokamak west --occ-pellets 1
+
+# entry anywhere on disk (the folder holding master.h5), result in run 333, pellets occurrence 5
+python -m src_hpi2nn.interfaces.imas_interface --time -37.5 --path <imasdb>/west/3/54304/0 --occ-pellets 1 \
+    --out-run 333 --out-occ-pellets 5
+```
+
+- `--time`: time of the computation (s). A negative time takes the last pellet launched at or
+  before `abs(time)`.
+- Input entry: `--uri`, `--path`, or `--shot`, `--run`, `--tokamak`, `--user`, `--version`,
+  `--backend`. With the last form the access layer looks in the user's public folder. The
+  `--occ-equilibrium`, `--occ-core-profiles` and `--occ-pellets` options select the occurrences
+  (default 0).
+- Output entry: `--out-run`, `--out-shot`, `--out-user`, `--out-tokamak`, or the whole
+  location with `--out-path` or `--out-uri`; occurrences with `--out-occ-pellets` and
+  `--out-occ-core-profiles`. What is not given is taken from the input entry, with the run
+  incremented by 1 and the same `pellets` and `core_profiles` occurrences.
+- `--pellet-rank`: which pellet of the time slice (1-based, as in HPI2).
+- `--inj-value`: force the injection line instead of detecting it from the pellet path.
+- `--no-write`: compute, but write nothing.
+- `--plot`: draw n_e and T_e before and after the pellet.
+
+From Python, the same call returns the two output IDSs and the HPI2-NN inputs and outputs:
+
+```python
+from hpi2nn.src_hpi2nn.interfaces.imas_interface import hpi2nn_imas_interface
+
+pellets_out, core_profiles_out, result = hpi2nn_imas_interface(
+    -37.5,
+    {"shot": 54304, "run": 0, "tokamak": "west", "occurrence": {"pellets": 1}},   # input entry
+    {"run": 333, "occurrence": {"pellets": 5}},                                    # output entry
+)
+```
+
+HPI2-NN takes fewer inputs than HPI2. It reads:
+
+- `pellets` (`get_slice` at the time): `velocity_initial`, `shape` (the equivalent-sphere radius,
+  computed from `shape.type.index` exactly as HPI2 does) and the `path_geometry` first and second
+  points, from which the injection line is detected;
+- `core_profiles`: `electrons.density_thermal` (else `electrons.density`),
+  `electrons.temperature`, `t_i_average` and `q` (else the equilibrium q), on
+  `grid.rho_tor_norm`;
+- `equilibrium`: `vacuum_toroidal_field.b0`, and the plasma boundary to place the pellet path.
+
+The 2D equilibrium, Z_eff and the code parameters that HPI2 uses are not inputs of HPI2-NN. The
+plasma and pellet composition are only checked against the training databases (deuterium
+pellets; D plasmas on WEST, D or DT on ITER), with a warning when they differ.
+
+It writes, with `put_slice` as HPI2:
+
+- `pellets`: the input pellets time slice, dated at the end of ablation. HPI2-NN predicts the
+  ablation time, not the profiles along the path. So `path_profiles` holds only the two ends of
+  the in-plasma path, where the pellet enters the plasma and where it is fully ablated, as
+  `distance`, `position` and `velocity`.
+- `core_profiles`: a new IDS on the input grid, with `electrons.density` and `density_thermal`
+  = n_e + dne, `electrons.temperature` = T_e + dTe, the electron pressures, and
+  `t_i_average` = T_i n_e / (n_e + dne). That is the dilution that gives dTe, applied to T_i as
+  HPI2 applies the same mixing to both temperatures.
+- no `temporary` IDS, where HPI2 stores its internal output.
+
+HPI2's ablation time counts from the launch point, while HPI2-NN's counts only the time inside
+the plasma (plus 0.1 ms). To date the output as HPI2 does, the interface adds the flight from
+the launch point to the plasma boundary of the equilibrium. `code.parameters` records both
+times, the injection line and the inputs used. The `ids_properties.comment` records any
+out-of-domain warning. `put_slice` writes only time-dependent data, so in an entry holding
+several pellets these two fields keep the values of the first pellet written, as with HPI2.
+
+The interface refuses to write into the input entry, and refuses to add a slice at or before
+the last one already in the output occurrence. Compute the pellets in time order, or write to
+another run.
+
+On Windows, `h5py` and `imas-core` cannot be imported in the same Python process (each ships
+its own HDF5 library), so don't import h5py before calling the interface.
+
 ### Out-of-domain warnings
 
 Each model ships its training ranges (`artifacts_hpi2nn/scalers/<device>/training_domain.json`):
