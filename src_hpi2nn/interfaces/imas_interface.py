@@ -34,7 +34,10 @@ from anywhere, with the package installed)::
 Inputs
 ------
 ``time``: time of the computation (s). If negative, the computation is synchronised with
-the pellets IDS: it uses the last pellet launched at or before ``abs(time)``.
+the pellets IDS: it uses the last pellet launched at or before ``abs(time)`` according to
+``pellets.time`` (element k is the launch time of ``time_slice[k]``, whose own time can be
+dated after the pellet), and reads the plasma at that launch time. If positive, the plasma
+is read at ``time`` and the pellet is the closest time slice, launched at its slice time.
 
 ``imas_ref_in``: the input entry, given by ``uri``, by ``path`` (the folder of the run), or
 by ``shot``, ``run``, ``user``, ``tokamak``, ``version`` and ``backend``, in which case the
@@ -220,19 +223,30 @@ def _nonzero(*nodes):
 
 
 def synchronise(entry, time, occurrence):
-    """Time of the last pellet launched at or before `time` (the first one if none)."""
+    """The last pellet launched at or before `time` (the first one if none): its launch time,
+    from pellets.time, and the time of its slice, time_slice[k].time. Element k of
+    pellets.time is the launch time of time_slice[k]; the slice time can be later (dated
+    after the pellet), so it is only used to read that slice."""
     pellets = entry.get("pellets", occurrence, lazy=True, autoconvert=False)
-    if pellets.ids_properties.homogeneous_time == imas.ids_defs.IDS_TIME_MODE_HOMOGENEOUS:
-        times = _array(pellets.time)
-    else:
-        times = np.array([float(time_slice.time) for time_slice in pellets.time_slice])
-    if times.size == 0:
+    launches = _array(pellets.time)
+    slices = np.array([float(time_slice.time) for time_slice in pellets.time_slice])
+    if slices.size == 0:
         raise ValueError(f"pellets occurrence {occurrence} holds no pellet")
-    past = np.flatnonzero(times <= time)
-    index = past.max() if past.size else 0
-    print(f"Synchronisation: computing for the pellet launched at {times[index]:.6g} s "
-          f"instead of the requested time {time:.6g} s")
-    return float(times[index])
+    if launches.size == 0:
+        warnings.warn("pellets.time is empty: synchronising on time_slice[].time instead",
+                      stacklevel=3)
+        launches = slices
+    elif launches.size != slices.size:
+        warnings.warn(f"pellets.time has {launches.size} value(s) for {slices.size} time slices: "
+                      f"pellets.time[k] is taken as the launch time of time_slice[k], so only "
+                      f"the first {min(launches.size, slices.size)} pellet(s) can be selected",
+                      stacklevel=3)
+    launches = launches[:slices.size]
+    past = np.flatnonzero(launches <= time)
+    index = int(past.max()) if past.size else 0
+    print(f"Synchronisation: computing for the pellet launched at {launches[index]:.6g} s "
+          f"(pellets.time[{index}]) instead of the requested time {time:.6g} s")
+    return float(launches[index]), float(slices[index])
 
 
 def last_time(entry, ids_name, occurrence):
@@ -278,9 +292,12 @@ def read_inputs(uri, time, occurrence, pellet_rank):
     """Read the pellet, the plasma and the plasma boundary at `time` (closest samples)."""
     closest = imas.ids_defs.CLOSEST_INTERP
     with imas.DBEntry(uri, "r") as entry:
-        if time < 0:
-            time = synchronise(entry, abs(time), occurrence["pellets"])
-        pellets = entry.get_slice("pellets", time, closest, occurrence["pellets"],
+        launch = None
+        slice_time = time
+        if time < 0:   # pellet from pellets.time; plasma read at its launch time
+            launch, slice_time = synchronise(entry, abs(time), occurrence["pellets"])
+            time = launch
+        pellets = entry.get_slice("pellets", slice_time, closest, occurrence["pellets"],
                                   autoconvert=False)
         if not len(pellets.time_slice) or len(pellets.time_slice[0].pellet) < pellet_rank:
             raise ValueError(f"no pellet {pellet_rank} in pellets occurrence "
@@ -289,7 +306,7 @@ def read_inputs(uri, time, occurrence, pellet_rank):
         geometry = pellet.path_geometry
         inputs = {
             "time": time,
-            "t_pellet": float(pellets.time_slice[0].time),
+            "t_pellet": launch if launch is not None else float(pellets.time_slice[0].time),
             "velocity": float(pellet.velocity_initial),
             "radius": pellet_radius(pellet),
             "first_point": [float(geometry.first_point.r), float(geometry.first_point.z)],

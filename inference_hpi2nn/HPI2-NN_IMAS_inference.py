@@ -16,7 +16,7 @@ project_root = os.path.join(current_dir, os.pardir)
 sys.path.insert(0, project_root)
 from src_hpi2nn.interfaces.imas_interface import hpi2nn_imas_interface
 
-time = -37.5  #in s; negative: the last pellet launched at or before abs(time)
+time = -37.5  #in s; negative: the last pellet launched at or before abs(time), from pellets.time
 
 #Input entry: shot/run/tokamak are looked up in the public folder of user, ~user/public/imasdb/tokamak/version/shot/run
 #path (the folder of the run, holding master.h5) or uri (any IMAS URI) replace them when given
