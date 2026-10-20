@@ -104,10 +104,11 @@ python -m src_hpi2nn.interfaces.imas_interface --time -37.5 --path <imasdb>/west
     --out-run 333 --out-occ-pellets 5
 ```
 
-- `--time`: time of the computation (s). A negative time takes the last pellet launched at or
-  before `abs(time)` according to `pellets.time` (element k is the launch time of
-  `time_slice[k]`, whose own time can be dated after the pellet), and reads the plasma at that
-  launch time.
+- `--time`: time of the computation (s). A negative time takes, as HPI2, the last pellet
+  launched at or before `abs(time)` according to `pellets.time_slice[k].time` (`pellets.time`
+  for a homogeneous time base) and computes at that pellet's time; a positive time takes the
+  closest pellet. The pellet and the equilibrium are read at the closest sample, the
+  `core_profiles` at the last sample at or before the time, so never a plasma after the pellet.
 - Input entry: `--uri`, `--path`, or `--shot`, `--run`, `--tokamak`, `--user`, `--version`,
   `--backend`. With the last form the access layer looks in the user's public folder. The
   `--occ-equilibrium`, `--occ-core-profiles` and `--occ-pellets` options select the occurrences

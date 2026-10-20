@@ -34,10 +34,10 @@ from anywhere, with the package installed)::
 Inputs
 ------
 ``time``: time of the computation (s). If negative, the computation is synchronised with
-the pellets IDS: it uses the last pellet launched at or before ``abs(time)`` according to
-``pellets.time`` (element k is the launch time of ``time_slice[k]``, whose own time can be
-dated after the pellet), and reads the plasma at that launch time. If positive, the plasma
-is read at ``time`` and the pellet is the closest time slice, launched at its slice time.
+the pellets IDS, as in HPI2: it uses the last pellet launched at or before ``abs(time)``
+according to ``time_slice[k].time`` (``pellets.time`` if the pellets IDS has a homogeneous
+time base), and that pellet's time becomes the time of the computation. If positive, the
+pellet is the time slice closest to ``time``. The pellet's slice time is its launch time.
 
 ``imas_ref_in``: the input entry, given by ``uri``, by ``path`` (the folder of the run), or
 by ``shot``, ``run``, ``user``, ``tokamak``, ``version`` and ``backend``, in which case the
@@ -51,8 +51,13 @@ ones. Writing into the input entry itself is refused.
 
 ``pellet_rank``: which pellet of the time slice to compute (1-based, as in HPI2).
 
-Read (``get_slice`` at ``time``, closest sample, as HPI2)
---------------------------------------------------------
+Read (``get_slice`` at ``time``)
+--------------------------------
+``pellets`` and ``equilibrium`` are read at the closest sample, as HPI2 does. ``core_profiles``
+is read at the last sample at or before ``time`` (HPI2: the closest), so that the input
+plasma is never one already perturbed by the pellet; the time of that sample is recorded in
+the output (``code.parameters``, ``ids_properties.comment``).
+
 HPI2-NN takes fewer inputs than HPI2. From the IDSs it uses:
 
 * ``pellets``: ``velocity_initial``; ``shape`` (the equivalent-sphere radius, computed from
@@ -223,30 +228,23 @@ def _nonzero(*nodes):
 
 
 def synchronise(entry, time, occurrence):
-    """The last pellet launched at or before `time` (the first one if none): its launch time,
-    from pellets.time, and the time of its slice, time_slice[k].time. Element k of
-    pellets.time is the launch time of time_slice[k]; the slice time can be later (dated
-    after the pellet), so it is only used to read that slice."""
+    """Time of the last pellet launched at or before `time` (the first one if none), as
+    hpi2_imas_interface.m: from time_slice[k].time, or from pellets.time when the pellets IDS
+    has a homogeneous time base."""
     pellets = entry.get("pellets", occurrence, lazy=True, autoconvert=False)
-    launches = _array(pellets.time)
-    slices = np.array([float(time_slice.time) for time_slice in pellets.time_slice])
-    if slices.size == 0:
+    homogeneous = pellets.ids_properties.homogeneous_time == imas.ids_defs.IDS_TIME_MODE_HOMOGENEOUS
+    if homogeneous:
+        times = _array(pellets.time)
+    else:
+        times = np.array([float(time_slice.time) for time_slice in pellets.time_slice])
+    if times.size == 0:
         raise ValueError(f"pellets occurrence {occurrence} holds no pellet")
-    if launches.size == 0:
-        warnings.warn("pellets.time is empty: synchronising on time_slice[].time instead",
-                      stacklevel=3)
-        launches = slices
-    elif launches.size != slices.size:
-        warnings.warn(f"pellets.time has {launches.size} value(s) for {slices.size} time slices: "
-                      f"pellets.time[k] is taken as the launch time of time_slice[k], so only "
-                      f"the first {min(launches.size, slices.size)} pellet(s) can be selected",
-                      stacklevel=3)
-    launches = launches[:slices.size]
-    past = np.flatnonzero(launches <= time)
+    past = np.flatnonzero(times <= time)
     index = int(past.max()) if past.size else 0
-    print(f"Synchronisation: computing for the pellet launched at {launches[index]:.6g} s "
-          f"(pellets.time[{index}]) instead of the requested time {time:.6g} s")
-    return float(launches[index]), float(slices[index])
+    source = f"pellets.time[{index}]" if homogeneous else f"pellets.time_slice[{index}].time"
+    print(f"Synchronisation: computing for the pellet launched at {times[index]:.6g} s "
+          f"({source}) instead of the requested time {time:.6g} s")
+    return float(times[index])
 
 
 def last_time(entry, ids_name, occurrence):
@@ -289,15 +287,14 @@ def pellet_radius(pellet):
 
 
 def read_inputs(uri, time, occurrence, pellet_rank):
-    """Read the pellet, the plasma and the plasma boundary at `time` (closest samples)."""
+    """Read the pellet and the equilibrium at `time` (closest samples, as HPI2) and the
+    core_profiles at the last sample at or before `time`, so never a plasma after the pellet."""
     closest = imas.ids_defs.CLOSEST_INTERP
+    previous = imas.ids_defs.PREVIOUS_INTERP
     with imas.DBEntry(uri, "r") as entry:
-        launch = None
-        slice_time = time
-        if time < 0:   # pellet from pellets.time; plasma read at its launch time
-            launch, slice_time = synchronise(entry, abs(time), occurrence["pellets"])
-            time = launch
-        pellets = entry.get_slice("pellets", slice_time, closest, occurrence["pellets"],
+        if time < 0:   # the last pellet launched at or before abs(time), as HPI2
+            time = synchronise(entry, abs(time), occurrence["pellets"])
+        pellets = entry.get_slice("pellets", time, closest, occurrence["pellets"],
                                   autoconvert=False)
         if not len(pellets.time_slice) or len(pellets.time_slice[0].pellet) < pellet_rank:
             raise ValueError(f"no pellet {pellet_rank} in pellets occurrence "
@@ -306,7 +303,7 @@ def read_inputs(uri, time, occurrence, pellet_rank):
         geometry = pellet.path_geometry
         inputs = {
             "time": time,
-            "t_pellet": launch if launch is not None else float(pellets.time_slice[0].time),
+            "t_pellet": float(pellets.time_slice[0].time),
             "velocity": float(pellet.velocity_initial),
             "radius": pellet_radius(pellet),
             "first_point": [float(geometry.first_point.r), float(geometry.first_point.z)],
@@ -315,9 +312,12 @@ def read_inputs(uri, time, occurrence, pellet_rank):
             "pellet_material": hydrogen_label((float(s.z_n), float(s.a)) for s in pellet.species),
         }
 
-        core = entry.get_slice("core_profiles", time, closest, occurrence["core_profiles"],
+        # previous, not closest: the closest sample can lie after the pellet launch
+        core = entry.get_slice("core_profiles", time, previous, occurrence["core_profiles"],
                                lazy=True, autoconvert=False)
         profiles = core.profiles_1d[0]
+        core_time = _array(core.time)
+        inputs["t_core_profiles"] = float(core_time[0]) if core_time.size else float(profiles.time)
         inputs["dd_version"] = imas.util.get_data_dictionary_version(core)
         inputs["rho"] = _array(profiles.grid.rho_tor_norm)
         inputs["ne"] = _nonzero(profiles.electrons.density_thermal, profiles.electrons.density)
@@ -486,7 +486,7 @@ def hpi2nn_imas_interface(time, imas_ref_in, imas_ref_out=None, pellet_rank=1, i
     pellets, inputs = read_inputs(uri_in, float(time), ref_in["occurrence"], int(pellet_rank))
     print(f"Pellet rank = {pellet_rank}; launched at {inputs['t_pellet']:.6g} s; "
           f"radius {inputs['radius'] * 1e3:.3g} mm; velocity {inputs['velocity']:.4g} m/s; "
-          f"B0 {inputs['B0']:.4g} T")
+          f"B0 {inputs['B0']:.4g} T; core_profiles sample at {inputs['t_core_profiles']:.6g} s")
 
     if inj_value is None:
         inj_value = find_closest_injection_line(inputs["first_point"], inputs["second_point"])
@@ -543,7 +543,8 @@ def hpi2nn_imas_interface(time, imas_ref_in, imas_ref_out=None, pellet_rank=1, i
 
     code = code_info()
     parameters = parameters_xml({
-        "time_requested": time, "time": inputs["time"], "pellet_rank": pellet_rank,
+        "time_requested": time, "time": inputs["time"],
+        "time_core_profiles": inputs["t_core_profiles"], "pellet_rank": pellet_rank,
         "inj_value": inj_value, "pellet_radius": inputs["radius"], "velocity": velocity,
         "B0": inputs["B0"], "first_point": inputs["first_point"],
         "second_point": inputs["second_point"], "pellet_material": inputs["pellet_material"],
@@ -553,7 +554,8 @@ def hpi2nn_imas_interface(time, imas_ref_in, imas_ref_out=None, pellet_rank=1, i
     comment = (f"HPI2-NN for IMAS (hpi2nn {code['version']} @ {code['commit'][:12]}): "
                f"pellet {pellet_rank} of pellets/{ref_in['occurrence']['pellets']} at "
                f"{inputs['t_pellet']:.6g} s, plasma from core_profiles/"
-               f"{ref_in['occurrence']['core_profiles']} and equilibrium/"
+               f"{ref_in['occurrence']['core_profiles']} at {inputs['t_core_profiles']:.6g} s (last "
+               f"sample at or before {inputs['time']:.6g} s) and equilibrium/"
                f"{ref_in['occurrence']['equilibrium']} at {inputs['time']:.6g} s, input entry "
                f"{uri_in}; injection line {inj_value}; in-plasma ablation time {t_abl * 1e3:.4g} ms"
                f" + flight to the plasma {lead_in * 1e3:.4g} ms."
